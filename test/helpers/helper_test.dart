@@ -14,33 +14,33 @@ class TestHelpers {
 
     registry.register<SimpleTask>(
       'simple_task',
-      (payload, transferables) => SimpleTask.fromPayload(payload),
+          (payload, transferables) => SimpleTask.fromPayload(payload),
     );
 
     registry.register<LongRunningTask>(
       'long_task',
-      (payload, transferables) => LongRunningTask.fromPayload(payload),
+          (payload, transferables) => LongRunningTask.fromPayload(payload),
     );
 
     registry.register<ProgressTask>(
       'progress_task',
-      (payload, transferables) => ProgressTask.fromPayload(payload),
+          (payload, transferables) => ProgressTask.fromPayload(payload),
     );
 
     registry.register<ErrorTask>(
       'error_task',
-      (payload, transferables) => ErrorTask.fromPayload(payload),
+          (payload, transferables) => ErrorTask.fromPayload(payload),
     );
 
     registry.register<TransferableTask>(
       'transferable_task',
-      (payload, transferables) =>
+          (payload, transferables) =>
           TransferableTask.fromPayload(payload, transferables),
     );
 
     registry.register<PriorityTask>(
       'priority_task',
-      (payload, transferables) => PriorityTask.fromPayload(payload),
+          (payload, transferables) => PriorityTask.fromPayload(payload),
     );
 
     return registry;
@@ -53,6 +53,7 @@ class TestHelpers {
     int maxConcurrentTasks = 3,
     bool usePool = false,
     int poolSize = 2,
+    Duration idleTimeout = const Duration(hours: 1), // Long timeout for tests
   }) {
     return IsolateKit.create(
       taskRegistry: registry ?? createBasicRegistry(),
@@ -60,15 +61,17 @@ class TestHelpers {
       maxConcurrentTasks: maxConcurrentTasks,
       usePool: usePool,
       poolSize: poolSize,
+      idleTimeout: idleTimeout,
+      idleCheckInterval: const Duration(hours: 1), // Disable for tests
     );
   }
 
   /// Wait for a condition with timeout
   static Future<void> waitFor(
-    bool Function() condition, {
-    Duration timeout = const Duration(seconds: 5),
-    Duration checkInterval = const Duration(milliseconds: 100),
-  }) async {
+      bool Function() condition, {
+        Duration timeout = const Duration(seconds: 5),
+        Duration checkInterval = const Duration(milliseconds: 100),
+      }) async {
     final endTime = DateTime.now().add(timeout);
 
     while (!condition()) {
@@ -97,10 +100,19 @@ class TestHelpers {
 
   /// Run function with timeout
   static Future<T> withTimeout<T>(
-    Future<T> Function() fn,
-    Duration timeout,
-  ) async {
+      Future<T> Function() fn,
+      Duration timeout,
+      ) async {
     return await fn().timeout(timeout);
+  }
+
+  /// Clean up all test instances
+  static void cleanupAll() {
+    try {
+      IsolateKit.disposeAll();
+    } catch (e) {
+      print('Error during cleanup: $e');
+    }
   }
 }
 
@@ -154,6 +166,7 @@ class SimpleTask extends IsolateTask<int, int> {
     CancellationToken? cancellationToken,
   }) async {
     cancellationToken?.throwIfCancelled();
+    await Future.delayed(const Duration(milliseconds: 50));
     return value * 2;
   }
 }
@@ -181,11 +194,20 @@ class LongRunningTask extends IsolateTask<int, int> {
     void Function(IsolateTaskProgress progress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
-    final start = DateTime.now();
-    while (DateTime.now().difference(start).inMilliseconds < duration) {
+    final steps = 10;
+    final stepDuration = duration ~/ steps;
+
+    for (int i = 0; i < steps; i++) {
       cancellationToken?.throwIfCancelled();
-      await Future.delayed(const Duration(milliseconds: 50));
+
+      await Future.delayed(Duration(milliseconds: stepDuration));
+
+      sendProgress?.call(IsolateTaskProgress(
+        percentage: (i + 1) / steps,
+        message: 'Step ${i + 1}/$steps',
+      ));
     }
+
     return duration;
   }
 }
@@ -250,6 +272,7 @@ class ErrorTask extends IsolateTask<void, void> {
     void Function(IsolateTaskProgress progress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
+    await Future.delayed(const Duration(milliseconds: 50));
     throw Exception(message);
   }
 }
@@ -260,9 +283,9 @@ class TransferableTask extends IsolateTask<Uint8List, int> {
   TransferableTask({required this.data});
 
   factory TransferableTask.fromPayload(
-    Map<String, dynamic> payload,
-    List<TransferableTypedData>? transferables,
-  ) {
+      Map<String, dynamic> payload,
+      List<TransferableTypedData>? transferables,
+      ) {
     return TransferableTask(
       data: transferables != null
           ? TransferableHelper.toUint8List(transferables[0])
@@ -315,9 +338,9 @@ class PriorityTask extends IsolateTask<int, int> {
 
   @override
   Map<String, dynamic> get payload => {
-        'id': id,
-        'priority': taskPriority,
-      };
+    'id': id,
+    'priority': taskPriority,
+  };
 
   @override
   String get taskType => 'priority_task';
@@ -330,6 +353,7 @@ class PriorityTask extends IsolateTask<int, int> {
     void Function(IsolateTaskProgress progress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
+    cancellationToken?.throwIfCancelled();
     await Future.delayed(const Duration(milliseconds: 100));
     return id;
   }
@@ -358,16 +382,16 @@ class TestAssertions {
 
   /// Assert task completed successfully
   static Future<void> assertTaskCompletes<T>(
-    TaskHandle<T> handle, {
-    Duration timeout = const Duration(seconds: 5),
-  }) async {
+      TaskHandle<T> handle, {
+        Duration timeout = const Duration(seconds: 5),
+      }) async {
     await handle.future.timeout(timeout);
   }
 
   /// Assert task throws specific exception
   static Future<void> assertTaskThrows<T, E>(
-    TaskHandle<T> handle,
-  ) async {
+      TaskHandle<T> handle,
+      ) async {
     try {
       await handle.future;
       throw AssertionError(
