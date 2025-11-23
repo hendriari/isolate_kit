@@ -1,6 +1,10 @@
 import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:isolate_kit/isolate_kit.dart';
+
+import 'helpers/transferable_helper.dart';
+
+export 'helpers/transferable_helper.dart';
 
 void main() {
   group('TransferableHelper', () {
@@ -59,7 +63,8 @@ void main() {
 
     test('shouldUseTransferable with custom threshold', () {
       expect(
-        TransferableHelper.shouldUseTransferable(10 * 1024, threshold: 5 * 1024),
+        TransferableHelper.shouldUseTransferable(10 * 1024,
+            threshold: 5 * 1024),
         isTrue,
       );
       expect(
@@ -77,12 +82,14 @@ void main() {
       expect(TransferableHelper.formatSize(512), equals('512 B'));
       expect(TransferableHelper.formatSize(1024), equals('1.00 KB'));
       expect(TransferableHelper.formatSize(1024 * 1024), equals('1.00 MB'));
-      expect(TransferableHelper.formatSize(1024 * 1024 * 1024), equals('1.00 GB'));
+      expect(
+          TransferableHelper.formatSize(1024 * 1024 * 1024), equals('1.00 GB'));
     });
 
     test('estimateMemorySavings', () {
       expect(TransferableHelper.estimateMemorySavings(50 * 1024), equals(0));
-      expect(TransferableHelper.estimateMemorySavings(150 * 1024), equals(50.0));
+      expect(
+          TransferableHelper.estimateMemorySavings(150 * 1024), equals(50.0));
     });
 
     test('fromByteBuffer', () {

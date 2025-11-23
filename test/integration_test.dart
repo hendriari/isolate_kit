@@ -5,6 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:isolate_kit/isolate_kit.dart';
 
+import 'helpers/transferable_helper.dart';
+
+export 'helpers/transferable_helper.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -126,28 +130,28 @@ void main() {
       final lowHandle = isolateKit.runTask<String, String>(
         PriorityDemoTask(
           id: 'low',
-          taskPriority: IsolateTaskPriority.low,
+          taskPriority: TaskPriority.low,
         ),
       );
 
       final normalHandle = isolateKit.runTask<String, String>(
         PriorityDemoTask(
           id: 'normal',
-          taskPriority: IsolateTaskPriority.normal,
+          taskPriority: TaskPriority.normal,
         ),
       );
 
       final highHandle = isolateKit.runTask<String, String>(
         PriorityDemoTask(
           id: 'high',
-          taskPriority: IsolateTaskPriority.high,
+          taskPriority: TaskPriority.high,
         ),
       );
 
       final criticalHandle = isolateKit.runTask<String, String>(
         PriorityDemoTask(
           id: 'critical',
-          taskPriority: IsolateTaskPriority.critical,
+          taskPriority: TaskPriority.critical,
         ),
       );
 

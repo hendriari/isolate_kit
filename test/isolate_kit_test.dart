@@ -112,11 +112,11 @@ void main() {
 
   group('IsolateTaskPriority', () {
     test('priority constants are correct', () {
-      expect(IsolateTaskPriority.low, equals(0));
-      expect(IsolateTaskPriority.normal, equals(5));
-      expect(IsolateTaskPriority.high, equals(10));
-      expect(IsolateTaskPriority.critical, equals(15));
-      expect(IsolateTaskPriority.realtime, equals(20));
+      expect(TaskPriority.low, equals(0));
+      expect(TaskPriority.normal, equals(5));
+      expect(TaskPriority.high, equals(10));
+      expect(TaskPriority.critical, equals(15));
+      expect(TaskPriority.realtime, equals(20));
     });
   });
 
@@ -522,13 +522,13 @@ void main() {
       // Add tasks with different priorities
       final handles = [
         controller.runTask<int, int>(
-          PriorityTask(id: 1, taskPriority: IsolateTaskPriority.low),
+          PriorityTask(id: 1, taskPriority: TaskPriority.low),
         ),
         controller.runTask<int, int>(
-          PriorityTask(id: 2, taskPriority: IsolateTaskPriority.high),
+          PriorityTask(id: 2, taskPriority: TaskPriority.high),
         ),
         controller.runTask<int, int>(
-          PriorityTask(id: 3, taskPriority: IsolateTaskPriority.critical),
+          PriorityTask(id: 3, taskPriority: TaskPriority.critical),
         ),
       ];
 

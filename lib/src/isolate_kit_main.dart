@@ -3,11 +3,17 @@ import 'dart:isolate';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/widgets.dart';
-import 'package:isolate_kit/isolate_kit.dart';
 import 'package:synchronized/synchronized.dart';
 
-export 'transferable_helper.dart';
-export 'isolate_task_priority.dart';
+// ======================= TASK PRIORITY =============================
+
+class TaskPriority {
+  static const int low = 0;
+  static const int normal = 5;
+  static const int high = 10;
+  static const int critical = 15;
+  static const int realtime = 20;
+}
 
 // ==================== EXCEPTIONS ====================
 
@@ -105,11 +111,11 @@ class IsolateTaskProgress {
       'Progress: ${(percentage * 100).toStringAsFixed(1)}%${message != null ? ' - $message' : ''}';
 
   Map<String, dynamic> toJson() => {
-    'percentage': percentage,
-    'message': message,
-    'data': data,
-    'timestamp': timestamp.toIso8601String(),
-  };
+        'percentage': percentage,
+        'message': message,
+        'data': data,
+        'timestamp': timestamp.toIso8601String(),
+      };
 }
 
 // ==================== BASE TASK ====================
@@ -122,7 +128,7 @@ abstract class IsolateTask<TCommand, TResult> {
 
   String get taskType => runtimeType.toString();
 
-  int get priority => IsolateTaskPriority.normal;
+  int get priority => TaskPriority.normal;
 
   List<TransferableTypedData>? get transferables => null;
 
@@ -149,9 +155,9 @@ class IsolateTaskRegistry {
   final Map<Type, String> _typeToString = {};
 
   void register<T extends IsolateTask>(
-      String taskType,
-      T Function(Map<String, dynamic>, List<TransferableTypedData>?) factory,
-      ) {
+    String taskType,
+    T Function(Map<String, dynamic>, List<TransferableTypedData>?) factory,
+  ) {
     _factories[taskType] = factory;
     _typeToString[T] = taskType;
   }
@@ -163,10 +169,10 @@ class IsolateTaskRegistry {
   }
 
   IsolateTask? create(
-      String taskType,
-      Map<String, dynamic> payload, {
-        List<TransferableTypedData>? transferables,
-      }) {
+    String taskType,
+    Map<String, dynamic> payload, {
+    List<TransferableTypedData>? transferables,
+  }) {
     final factory = _factories[taskType];
     return factory?.call(payload, transferables);
   }
@@ -304,7 +310,8 @@ class _PoolWorker {
     final rp = ReceivePort();
     _isolate = await Isolate.spawn(
       _workerEntry,
-      _IsolateInitData(sendPort: rp.sendPort, taskRegistry: taskRegistry.clone()),
+      _IsolateInitData(
+          sendPort: rp.sendPort, taskRegistry: taskRegistry.clone()),
       debugName: debugName,
       errorsAreFatal: false,
     );
@@ -317,12 +324,12 @@ class _PoolWorker {
   }
 
   Future<T> runTask<T>(
-      String taskId,
-      IsolateTask task, {
-        required Duration timeout,
-        void Function(IsolateTaskProgress)? onProgress,
-        required CancellationToken token,
-      }) async {
+    String taskId,
+    IsolateTask task, {
+    required Duration timeout,
+    void Function(IsolateTaskProgress)? onProgress,
+    required CancellationToken token,
+  }) async {
     activeTasks++;
     _lastUsed = DateTime.now();
 
@@ -402,11 +409,11 @@ class _PoolWorker {
   }
 
   Map<String, dynamic> getStatus() => {
-    'workerId': workerId,
-    'activeTasks': activeTasks,
-    'totalCompleted': totalCompleted,
-    'lastUsed': _lastUsed?.toIso8601String(),
-  };
+        'workerId': workerId,
+        'activeTasks': activeTasks,
+        'totalCompleted': totalCompleted,
+        'lastUsed': _lastUsed?.toIso8601String(),
+      };
 
   static void _workerEntry(_IsolateInitData init) => _isolateWorker(init);
 
@@ -445,13 +452,13 @@ class _PoolWorker {
         final result = await task.execute(
           sendProgress: msg.progressPort != null
               ? (p) {
-            token.throwIfCancelled();
-            msg.progressPort!.send({
-              'percentage': p.percentage,
-              'message': p.message,
-              'data': p.data,
-            });
-          }
+                  token.throwIfCancelled();
+                  msg.progressPort!.send({
+                    'percentage': p.percentage,
+                    'message': p.message,
+                    'data': p.data,
+                  });
+                }
               : null,
           cancellationToken: token,
         );
@@ -511,12 +518,12 @@ class IsolatePool {
       _workers.reduce((a, b) => a.activeTasks < b.activeTasks ? a : b);
 
   Future<T> runTask<T>(
-      String taskId,
-      IsolateTask task, {
-        Duration timeout = const Duration(seconds: 30),
-        void Function(IsolateTaskProgress)? onProgress,
-        required CancellationToken token,
-      }) async {
+    String taskId,
+    IsolateTask task, {
+    Duration timeout = const Duration(seconds: 30),
+    void Function(IsolateTaskProgress)? onProgress,
+    required CancellationToken token,
+  }) async {
     if (!_initialized) await init();
     return _leastBusy().runTask(
       taskId,
@@ -537,12 +544,12 @@ class IsolatePool {
   }
 
   Map<String, dynamic> getStatus() => {
-    'poolSize': poolSize,
-    'initialized': _initialized,
-    'workers': _workers.map((w) => w.getStatus()).toList(),
-    'totalActive': _workers.fold(0, (sum, w) => sum + w.activeTasks),
-    'totalCompleted': _workers.fold(0, (sum, w) => sum + w.totalCompleted),
-  };
+        'poolSize': poolSize,
+        'initialized': _initialized,
+        'workers': _workers.map((w) => w.getStatus()).toList(),
+        'totalActive': _workers.fold(0, (sum, w) => sum + w.activeTasks),
+        'totalCompleted': _workers.fold(0, (sum, w) => sum + w.totalCompleted),
+      };
 }
 
 // ==================== MAIN CONTROLLER ====================
@@ -563,7 +570,7 @@ class IsolateKit with WidgetsBindingObserver {
   }) {
     return _instances.putIfAbsent(
       name,
-          () => IsolateKit._internal(
+      () => IsolateKit._internal(
         taskRegistry: taskRegistry,
         debugName: debugName ?? name,
         idleTimeout: idleTimeout ?? const Duration(minutes: 5),
@@ -692,51 +699,51 @@ class IsolateKit with WidgetsBindingObserver {
 
   /// Initialize isolate/pool
   Future<void> init() async => _lock.synchronized(() async {
-    if (_isolate != null || (_pool != null && _pool!._initialized)) return;
-    _markUsed();
+        if (_isolate != null || (_pool != null && _pool!._initialized)) return;
+        _markUsed();
 
-    try {
-      if (usePool) {
-        _pool = IsolatePool(
-          poolSize: poolSize,
-          taskRegistry: taskRegistry,
-          debugName: debugName,
-        );
-        await _pool!.init();
-      } else {
-        final rp = ReceivePort();
-        _isolate = await Isolate.spawn(
-          _PoolWorker._isolateWorker,
-          _IsolateInitData(
-              sendPort: rp.sendPort, taskRegistry: taskRegistry.clone()),
-          debugName: '$debugName-$_id',
-          errorsAreFatal: false,
-        );
-        _sendPort = await rp.first.timeout(
-          const Duration(seconds: 10),
-          onTimeout: () => throw TimeoutException('Isolate init timeout'),
-        ) as SendPort;
-        rp.close();
-        _spawnTime = DateTime.now();
-        debugPrint('[$debugName:$_id] ✅ Isolate spawned');
-      }
-      _startIdleTimer();
-    } catch (e) {
-      _isolate?.kill(priority: Isolate.immediate);
-      _isolate = null;
-      _sendPort = null;
-      _pool?.dispose();
-      _pool = null;
-      rethrow;
-    }
-  });
+        try {
+          if (usePool) {
+            _pool = IsolatePool(
+              poolSize: poolSize,
+              taskRegistry: taskRegistry,
+              debugName: debugName,
+            );
+            await _pool!.init();
+          } else {
+            final rp = ReceivePort();
+            _isolate = await Isolate.spawn(
+              _PoolWorker._isolateWorker,
+              _IsolateInitData(
+                  sendPort: rp.sendPort, taskRegistry: taskRegistry.clone()),
+              debugName: '$debugName-$_id',
+              errorsAreFatal: false,
+            );
+            _sendPort = await rp.first.timeout(
+              const Duration(seconds: 10),
+              onTimeout: () => throw TimeoutException('Isolate init timeout'),
+            ) as SendPort;
+            rp.close();
+            _spawnTime = DateTime.now();
+            debugPrint('[$debugName:$_id] ✅ Isolate spawned');
+          }
+          _startIdleTimer();
+        } catch (e) {
+          _isolate?.kill(priority: Isolate.immediate);
+          _isolate = null;
+          _sendPort = null;
+          _pool?.dispose();
+          _pool = null;
+          rethrow;
+        }
+      });
 
   /// Run task with full feature support
   TaskHandle<TResult> runTask<TCommand, TResult>(
-      IsolateTask<TCommand, TResult> task, {
-        Duration timeout = const Duration(seconds: 30),
-        void Function(IsolateTaskProgress)? onProgress,
-      }) {
+    IsolateTask<TCommand, TResult> task, {
+    Duration timeout = const Duration(seconds: 30),
+    void Function(IsolateTaskProgress)? onProgress,
+  }) {
     final taskId = '${DateTime.now().microsecondsSinceEpoch}_$_totalCompleted';
     final completer = Completer<TResult>();
     final token = CancellationToken();
@@ -977,9 +984,9 @@ class IsolateKit with WidgetsBindingObserver {
   Map<String, dynamic> getStatus() {
     final now = DateTime.now();
     final idle =
-    _lastUsed != null ? now.difference(_lastUsed!).inMinutes : null;
+        _lastUsed != null ? now.difference(_lastUsed!).inMinutes : null;
     final uptime =
-    _spawnTime != null ? now.difference(_spawnTime!).inSeconds : null;
+        _spawnTime != null ? now.difference(_spawnTime!).inSeconds : null;
 
     return {
       'debugName': debugName,
@@ -1001,11 +1008,11 @@ class IsolateKit with WidgetsBindingObserver {
       'queueDetails': _queue
           .toList()
           .map((qt) => {
-        'taskId': qt.taskId,
-        'taskType': qt.task.taskType,
-        'priority': qt.task.priority,
-        'waitingMs': qt.waitingTime.inMilliseconds,
-      })
+                'taskId': qt.taskId,
+                'taskType': qt.task.taskType,
+                'priority': qt.task.priority,
+                'waitingMs': qt.waitingTime.inMilliseconds,
+              })
           .toList(),
     };
   }
@@ -1039,9 +1046,9 @@ class IsolateKit with WidgetsBindingObserver {
     return {
       'totalInstances': _instances.length,
       'instances': _instances.map((name, instance) => MapEntry(
-        name,
-        instance.getStatus(),
-      )),
+            name,
+            instance.getStatus(),
+          )),
     };
   }
 }
