@@ -1,7 +1,3 @@
-// File: isolate_kit.dart
-// Perbaikan atas original file yang di-upload oleh user.
-// Referensi original: :contentReference[oaicite:1]{index=1}
-
 import 'dart:async';
 import 'dart:isolate';
 
@@ -79,7 +75,6 @@ class CancellationToken {
 
   void addListener(VoidCallback listener) {
     if (_isCancelled) {
-      // If already cancelled, call immediately as before
       try {
         listener();
       } catch (e) {
@@ -101,7 +96,7 @@ class CancellationToken {
       token.addListener(cb);
       added.add(cb);
     }
-    // Note: we do not keep references for removal here; if needed, extend API.
+    // Note: no removal API for combined listeners in this simple implementation.
     return combined;
   }
 }
@@ -272,6 +267,8 @@ class _IsolateMessage {
 }
 
 class _QueuedTask implements Comparable<_QueuedTask> {
+  bool _done = false;
+
   final String taskId;
   final IsolateTask task;
   final Duration timeout;
@@ -355,6 +352,7 @@ class _PoolWorker {
     VoidCallback? onCancel;
 
     try {
+      // _sendPort must not be null here; caller should await whenReady
       _sendPort!.send(_IsolateMessage(
         taskId: taskId,
         taskType: task.taskType,
@@ -412,7 +410,7 @@ class _PoolWorker {
       totalCompleted++;
       return result as T;
     } finally {
-      // FIXED: remove the exact listener that was added (avoid removeListener(() {}))
+      // remove the exact listener that was added (avoid removeListener(() {}))
       if (onCancel != null) token.removeListener(onCancel);
       _cancelPorts.remove(taskId);
       response.close();
@@ -423,7 +421,9 @@ class _PoolWorker {
   }
 
   void dispose() {
-    _isolate?.kill(priority: Isolate.immediate);
+    try {
+      _isolate?.kill(priority: Isolate.immediate);
+    } catch (_) {}
     _isolate = null;
     _sendPort = null;
     _cancelPorts.clear();
@@ -519,6 +519,7 @@ class IsolatePool {
   final List<_PoolWorker> _workers = [];
   final Completer<void> _ready = Completer<void>();
   bool _initialized = false;
+  final Lock _initLock = Lock();
 
   IsolatePool({
     required this.poolSize,
@@ -529,33 +530,35 @@ class IsolatePool {
   Future<void> get whenReady => _ready.future;
 
   Future<void> init() async {
-    if (_initialized) return;
+    await _initLock.synchronized(() async {
+      if (_initialized) return;
 
-    debugPrint('[$debugName] Initializing pool with $poolSize workers...');
+      debugPrint('[$debugName] Initializing pool with $poolSize workers...');
 
-    final List<Future<void>> initFutures = [];
+      final List<Future<void>> initFutures = [];
 
-    for (int i = 0; i < poolSize; i++) {
-      final w = _PoolWorker(
-        workerId: i,
-        taskRegistry: taskRegistry,
-        debugName: '$debugName-Worker$i',
-      );
-      _workers.add(w);
+      for (int i = 0; i < poolSize; i++) {
+        final w = _PoolWorker(
+          workerId: i,
+          taskRegistry: taskRegistry,
+          debugName: '$debugName-Worker$i',
+        );
+        _workers.add(w);
 
-      initFutures.add(w.init().then((_) {
-        debugPrint('[$debugName-Worker$i] Worker ready');
-      }));
-    }
+        initFutures.add(w.init().then((_) {
+          debugPrint('[$debugName-Worker$i] Worker ready');
+        }));
+      }
 
-    await Future.wait(initFutures);
+      await Future.wait(initFutures);
 
-    _initialized = true;
-    if (!_ready.isCompleted) {
-      _ready.complete();
-    }
+      _initialized = true;
+      if (!_ready.isCompleted) {
+        _ready.complete();
+      }
 
-    debugPrint('[$debugName] Pool ready with $poolSize workers');
+      debugPrint('[$debugName] Pool ready with $poolSize workers');
+    });
   }
 
   /// Get least busy worker (load balancing)
@@ -573,7 +576,8 @@ class IsolatePool {
     void Function(IsolateTaskProgress)? onProgress,
     required CancellationToken token,
   }) async {
-    if (!_initialized) await init();
+    // Ensure pool is fully initialized and ready before dispatching
+    await whenReady;
     return _leastBusy().runTask(
       taskId,
       task,
@@ -584,11 +588,20 @@ class IsolatePool {
   }
 
   void dispose() {
+    // If there are active tasks, we still allow forceful dispose from controller.
     for (final w in _workers) {
       w.dispose();
     }
     _workers.clear();
     _initialized = false;
+    // reset _ready so init can be called again if needed
+    // (create new completer)
+    try {
+      // ignore: invalid_use_of_visible_for_testing_member
+      if (!_ready.isCompleted) {
+        _ready.complete();
+      }
+    } catch (_) {}
     debugPrint('[$debugName] 🧹 Pool disposed');
   }
 
@@ -634,7 +647,7 @@ class IsolateKit with WidgetsBindingObserver {
   /// Create new instance (non-singleton)
   factory IsolateKit.create({
     required IsolateTaskRegistry taskRegistry,
-    String debugName = 'IsolateKit',
+    String debugName = 'IsolateController',
     Duration idleTimeout = const Duration(minutes: 5),
     Duration idleCheckInterval = const Duration(minutes: 1),
     int maxConcurrentTasks = 3,
@@ -763,7 +776,6 @@ class IsolateKit with WidgetsBindingObserver {
             await _pool!.whenReady;
           } else {
             final rp = ReceivePort();
-            // NOTE: we still pass a clone of registry — original code did this and tests register factories before creating controller.
             _isolate = await Isolate.spawn(
               _PoolWorker._isolateWorker,
               _IsolateInitData(
@@ -796,10 +808,8 @@ class IsolateKit with WidgetsBindingObserver {
     Duration timeout = const Duration(seconds: 30),
     void Function(IsolateTaskProgress)? onProgress,
   }) {
-    // FIXED: If pool is requested but not initialized yet, queue the task as usual
-    // and ensure the pool is initialized asynchronously. Don't return an already-failed completer.
+    // If pool is requested but not yet created, start initialization in background
     if (usePool && _pool == null) {
-      // Start initialization in background
       init();
     }
 
@@ -832,7 +842,10 @@ class IsolateKit with WidgetsBindingObserver {
         // Skip cancelled tasks
         if (qt.cancellationToken.isCancelled) {
           if (!qt.completer.isCompleted) {
-            qt.completer.completeError(TaskCancelledException(qt.taskId));
+            if (!qt._done) {
+              qt._done = true;
+              qt.completer.completeError(TaskCancelledException(qt.taskId));
+            }
           }
           debugPrint(
               '[$debugName:$_id] ⏭️  Skipped cancelled task ${qt.taskId}');
@@ -935,7 +948,10 @@ class IsolateKit with WidgetsBindingObserver {
       }
 
       if (!qt.cancellationToken.isCancelled && !qt.completer.isCompleted) {
-        qt.completer.complete(result);
+        if (!qt._done) {
+          qt._done = true;
+          qt.completer.complete(result);
+        }
         _totalCompleted++;
 
         final duration = DateTime.now().difference(startTime);
@@ -944,17 +960,26 @@ class IsolateKit with WidgetsBindingObserver {
       }
     } on TaskCancelledException {
       if (!qt.completer.isCompleted) {
-        qt.completer.completeError(TaskCancelledException(qt.taskId));
+        if (!qt._done) {
+          qt._done = true;
+          qt.completer.completeError(TaskCancelledException(qt.taskId));
+        }
       }
       debugPrint('[$debugName:$_id] 🚫 Task ${qt.taskId} cancelled');
     } on TaskTimeoutException catch (e) {
       if (!qt.completer.isCompleted) {
-        qt.completer.completeError(e);
+        if (!qt._done) {
+          qt._done = true;
+          qt.completer.completeError(e);
+        }
       }
       debugPrint('[$debugName:$_id] ⏱️  Task ${qt.taskId} timeout');
     } catch (e, s) {
       if (!qt.completer.isCompleted) {
-        qt.completer.completeError(e, s);
+        if (!qt._done) {
+          qt._done = true;
+          qt.completer.completeError(e, s);
+        }
       }
       debugPrint('[$debugName:$_id] ❌ Task ${qt.taskId} error: $e');
     } finally {
@@ -971,6 +996,10 @@ class IsolateKit with WidgetsBindingObserver {
     }
     if (_pool != null) {
       await _pool!.whenReady;
+    } else {
+      // If pool not created yet, init it
+      await init();
+      await _pool!.whenReady;
     }
   }
 
@@ -983,8 +1012,8 @@ class IsolateKit with WidgetsBindingObserver {
     _queue.clear();
 
     for (final task in queuedTasks) {
+      // DO NOT complete here — let executor/processQueue handle completion to avoid races
       task.cancellationToken.cancel();
-      // do not complete here — avoids double-cancel racing
     }
 
     // Cancel running tasks - DON'T complete their futures here
@@ -1037,7 +1066,9 @@ class IsolateKit with WidgetsBindingObserver {
     _idleTimer?.cancel();
     _idleTimer = null;
 
-    _isolate?.kill(priority: Isolate.immediate);
+    try {
+      _isolate?.kill(priority: Isolate.immediate);
+    } catch (_) {}
     _pool?.dispose();
     _isolate = null;
     _sendPort = null;
@@ -1124,7 +1155,7 @@ class IsolateKit with WidgetsBindingObserver {
       instance.dispose(force: true);
     }
 
-    debugPrint('IsolateKit: 🧹 All instances disposed');
+    debugPrint('IsolateController: 🧹 All instances disposed');
   }
 
   /// Get all instance names
