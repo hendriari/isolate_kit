@@ -2,9 +2,9 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'helpers/transferable_helper.dart';
+import 'transferable_helper.dart';
 
-export 'helpers/transferable_helper.dart';
+export 'transferable_helper.dart';
 
 void main() {
   group('TransferableHelper', () {
