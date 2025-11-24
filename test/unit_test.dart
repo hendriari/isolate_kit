@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:isolate_kit/isolate_kit.dart';
 
@@ -9,9 +10,8 @@ import 'helpers/helper_test.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  // Global teardown to clean all instances
   tearDownAll(() {
-    TestHelpers.cleanupAll();
+    HelperTest.cleanupAll();
   });
 
   group('CancellationToken', () {
@@ -271,15 +271,15 @@ void main() {
     late IsolateTaskRegistry registry;
 
     setUp(() {
-      registry = TestHelpers.createBasicRegistry();
-      controller = TestHelpers.createTestController(registry: registry);
+      registry = HelperTest.createBasicRegistry();
+      controller = HelperTest.createTestController(registry: registry);
     });
 
     tearDown(() {
       try {
         controller.dispose(force: true);
       } catch (e) {
-        print('Error disposing controller: $e');
+        debugPrint('Error disposing controller: $e');
       }
     });
 
@@ -378,19 +378,19 @@ void main() {
     late IsolateTaskRegistry registry;
 
     setUp(() {
-      registry = TestHelpers.createBasicRegistry();
+      registry = HelperTest.createBasicRegistry();
     });
 
     tearDown(() {
       try {
         controller.dispose(force: true);
       } catch (e) {
-        print('Error disposing controller: $e');
+        debugPrint('Error disposing controller: $e');
       }
     });
 
     test('creates instance with correct configuration', () {
-      controller = TestHelpers.createTestController(
+      controller = HelperTest.createTestController(
         registry: registry,
         debugName: 'TestController',
         maxConcurrentTasks: 2,
@@ -419,7 +419,7 @@ void main() {
     });
 
     test('runTask executes simple task', () async {
-      controller = TestHelpers.createTestController(registry: registry);
+      controller = HelperTest.createTestController(registry: registry);
 
       final handle = controller.runTask<int, int>(
         SimpleTask(value: 5),
@@ -431,7 +431,7 @@ void main() {
     });
 
     test('runTask with timeout', () async {
-      controller = TestHelpers.createTestController(registry: registry);
+      controller = HelperTest.createTestController(registry: registry);
 
       final handle = controller.runTask<int, int>(
         LongRunningTask(duration: 5000),
@@ -448,7 +448,7 @@ void main() {
     });
 
     test('task cancellation works', () async {
-      controller = TestHelpers.createTestController(registry: registry);
+      controller = HelperTest.createTestController(registry: registry);
 
       final handle = controller.runTask<int, int>(
         LongRunningTask(duration: 5000),
@@ -465,7 +465,7 @@ void main() {
     });
 
     test('progress callbacks work', () async {
-      controller = TestHelpers.createTestController(registry: registry);
+      controller = HelperTest.createTestController(registry: registry);
 
       final tracker = ProgressTracker();
 
@@ -481,7 +481,7 @@ void main() {
     });
 
     test('error handling works', () async {
-      controller = TestHelpers.createTestController(registry: registry);
+      controller = HelperTest.createTestController(registry: registry);
 
       final handle = controller.runTask<void, void>(
         ErrorTask(message: 'Test error'),
@@ -494,7 +494,7 @@ void main() {
     });
 
     test('multiple tasks execute in parallel', () async {
-      controller = TestHelpers.createTestController(
+      controller = HelperTest.createTestController(
         registry: registry,
         maxConcurrentTasks: 3,
       );
@@ -515,7 +515,7 @@ void main() {
     });
 
     test('priority queue works correctly', () async {
-      controller = TestHelpers.createTestController(
+      controller = HelperTest.createTestController(
         registry: registry,
         maxConcurrentTasks: 1, // Force sequential execution
       );
@@ -548,7 +548,7 @@ void main() {
     });
 
     test('transferable data works', () async {
-      controller = TestHelpers.createTestController(registry: registry);
+      controller = HelperTest.createTestController(registry: registry);
 
       final largeData = TestFixtures.largeData;
 
@@ -567,19 +567,19 @@ void main() {
     late IsolateTaskRegistry registry;
 
     setUp(() {
-      registry = TestHelpers.createBasicRegistry();
+      registry = HelperTest.createBasicRegistry();
     });
 
     tearDown(() {
       try {
         controller.dispose(force: true);
       } catch (e) {
-        print('Error disposing controller: $e');
+        debugPrint('Error disposing controller: $e');
       }
     });
 
     test('warmup initializes isolate', () async {
-      controller = TestHelpers.createTestController(registry: registry);
+      controller = HelperTest.createTestController(registry: registry);
 
       await controller.warmup();
 
@@ -589,7 +589,7 @@ void main() {
     });
 
     test('cancelAll cancels all tasks', () async {
-      controller = TestHelpers.createTestController(
+      controller = HelperTest.createTestController(
         registry: registry,
         maxConcurrentTasks: 1,
       );
@@ -623,7 +623,7 @@ void main() {
     });
 
     test('reset reinitializes controller', () async {
-      controller = TestHelpers.createTestController(registry: registry);
+      controller = HelperTest.createTestController(registry: registry);
 
       await controller.init();
       expect(controller.getStatus()['initialized'], isTrue);
@@ -633,7 +633,7 @@ void main() {
     });
 
     test('getStatus returns correct information', () {
-      controller = TestHelpers.createTestController(
+      controller = HelperTest.createTestController(
         registry: registry,
         debugName: 'StatusTest',
         maxConcurrentTasks: 5,
@@ -649,7 +649,7 @@ void main() {
     });
 
     test('dispose cleans up resources', () {
-      controller = TestHelpers.createTestController(registry: registry);
+      controller = HelperTest.createTestController(registry: registry);
 
       controller.dispose();
 
@@ -658,7 +658,7 @@ void main() {
     });
 
     test('force dispose works with active tasks', () async {
-      controller = TestHelpers.createTestController(registry: registry);
+      controller = HelperTest.createTestController(registry: registry);
 
       final handle = controller.runTask<int, int>(
         LongRunningTask(duration: 5000),
@@ -689,19 +689,19 @@ void main() {
     late IsolateTaskRegistry registry;
 
     setUp(() {
-      registry = TestHelpers.createBasicRegistry();
+      registry = HelperTest.createBasicRegistry();
     });
 
     tearDown(() {
       try {
         controller.dispose(force: true);
       } catch (e) {
-        print('Error disposing controller: $e');
+        debugPrint('Error disposing controller: $e');
       }
     });
 
     test('pool mode executes tasks', () async {
-      controller = TestHelpers.createTestController(
+      controller = HelperTest.createTestController(
         registry: registry,
         usePool: true,
         poolSize: 2,
@@ -723,7 +723,7 @@ void main() {
     });
 
     test('pool distributes load across workers', () async {
-      controller = TestHelpers.createTestController(
+      controller = HelperTest.createTestController(
         registry: registry,
         usePool: true,
         poolSize: 3,
@@ -753,7 +753,7 @@ void main() {
     });
 
     test('pool status shows worker information', () async {
-      controller = TestHelpers.createTestController(
+      controller = HelperTest.createTestController(
         registry: registry,
         usePool: true,
         poolSize: 2,
@@ -774,11 +774,11 @@ void main() {
     late IsolateTaskRegistry registry;
 
     setUp(() {
-      registry = TestHelpers.createBasicRegistry();
+      registry = HelperTest.createBasicRegistry();
     });
 
     tearDown(() {
-      TestHelpers.cleanupAll();
+      HelperTest.cleanupAll();
     });
 
     test('disposeInstance removes specific instance', () {
@@ -847,12 +847,12 @@ void main() {
       try {
         controller.dispose(force: true);
       } catch (e) {
-        print('Error disposing controller: $e');
+        debugPrint('Error disposing controller: $e');
       }
     });
 
     test('unregistered task throws error', () async {
-      controller = TestHelpers.createTestController(registry: registry);
+      controller = HelperTest.createTestController(registry: registry);
 
       // Try to run unregistered task
       final task = UnregisteredTask();

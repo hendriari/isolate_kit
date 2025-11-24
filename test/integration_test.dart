@@ -493,7 +493,7 @@ void main() {
   });
 }
 
-// ==================== TASK IMPLEMENTATIONS ====================
+/// ************************* TASK IMPLEMENTATIONS ****************************
 
 void _registerAllTasks(IsolateTaskRegistry registry) {
   registry.register<FibonacciTask>(
