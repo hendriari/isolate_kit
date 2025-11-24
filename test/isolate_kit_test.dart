@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:isolate_kit/isolate_kit.dart';
 
@@ -50,7 +51,7 @@ void main() {
       token.cancel();
 
       expect(
-            () => token.throwIfCancelled(),
+        () => token.throwIfCancelled(),
         throwsA(isA<TaskCancelledException>()),
       );
     });
@@ -178,7 +179,7 @@ void main() {
     test('register and create task', () {
       registry.register<SimpleTask>(
         'simple_task',
-            (payload, transferables) => SimpleTask.fromPayload(payload),
+        (payload, transferables) => SimpleTask.fromPayload(payload),
       );
 
       final task = registry.create('simple_task', {'value': 42});
@@ -195,7 +196,7 @@ void main() {
     test('isRegistered checks correctly', () {
       registry.register<SimpleTask>(
         'simple_task',
-            (payload, transferables) => SimpleTask.fromPayload(payload),
+        (payload, transferables) => SimpleTask.fromPayload(payload),
       );
 
       expect(registry.isRegistered('simple_task'), isTrue);
@@ -205,11 +206,11 @@ void main() {
     test('registeredTypes returns all types', () {
       registry.register<SimpleTask>(
         'task1',
-            (payload, transferables) => SimpleTask.fromPayload(payload),
+        (payload, transferables) => SimpleTask.fromPayload(payload),
       );
       registry.register<LongRunningTask>(
         'task2',
-            (payload, transferables) => LongRunningTask.fromPayload(payload),
+        (payload, transferables) => LongRunningTask.fromPayload(payload),
       );
 
       final types = registry.registeredTypes;
@@ -222,7 +223,7 @@ void main() {
     test('unregister removes task', () {
       registry.register<SimpleTask>(
         'simple_task',
-            (payload, transferables) => SimpleTask.fromPayload(payload),
+        (payload, transferables) => SimpleTask.fromPayload(payload),
       );
 
       expect(registry.isRegistered('simple_task'), isTrue);
@@ -235,11 +236,11 @@ void main() {
     test('clear removes all tasks', () {
       registry.register<SimpleTask>(
         'task1',
-            (payload, transferables) => SimpleTask.fromPayload(payload),
+        (payload, transferables) => SimpleTask.fromPayload(payload),
       );
       registry.register<LongRunningTask>(
         'task2',
-            (payload, transferables) => LongRunningTask.fromPayload(payload),
+        (payload, transferables) => LongRunningTask.fromPayload(payload),
       );
 
       registry.clear();
@@ -250,7 +251,7 @@ void main() {
     test('clone creates independent copy', () {
       registry.register<SimpleTask>(
         'simple_task',
-            (payload, transferables) => SimpleTask.fromPayload(payload),
+        (payload, transferables) => SimpleTask.fromPayload(payload),
       );
 
       final cloned = registry.clone();
@@ -301,7 +302,7 @@ void main() {
       expect(handle.isCancelled, isFalse);
 
       // Wait for task to start
-      await Future.delayed(const Duration(milliseconds: 100));
+      await controller.whenReady();
 
       handle.cancel();
 
@@ -362,10 +363,12 @@ void main() {
         await handle.future.timeout(const Duration(seconds: 2));
         fail('Expected TaskCancelledException');
       } catch (e) {
-        expect(e, anyOf([
-          isA<TaskCancelledException>(),
-          isA<TimeoutException>(), // In case it times out
-        ]));
+        expect(
+            e,
+            anyOf([
+              isA<TaskCancelledException>(),
+              isA<TimeoutException>(), // In case it times out
+            ]));
       }
     });
   });
@@ -500,7 +503,7 @@ void main() {
 
       final handles = List.generate(
         3,
-            (i) => controller.runTask<int, int>(SimpleTask(value: i)),
+        (i) => controller.runTask<int, int>(SimpleTask(value: i)),
       );
 
       final results = await Future.wait(handles.map((h) => h.future));
@@ -593,7 +596,7 @@ void main() {
 
       final handles = List.generate(
         5,
-            (i) => controller.runTask<int, int>(
+        (i) => controller.runTask<int, int>(
           LongRunningTask(duration: 5000),
         ),
       );
@@ -609,10 +612,12 @@ void main() {
           await handle.future.timeout(const Duration(seconds: 2));
           fail('Expected task to be cancelled');
         } catch (e) {
-          expect(e, anyOf([
-            isA<TaskCancelledException>(),
-            isA<TimeoutException>(), // Acceptable if not started yet
-          ]));
+          expect(
+              e,
+              anyOf([
+                isA<TaskCancelledException>(),
+                isA<TimeoutException>(), // Acceptable if not started yet
+              ]));
         }
       }
     });
@@ -669,10 +674,12 @@ void main() {
         await handle.future.timeout(const Duration(seconds: 2));
         fail('Expected task to be cancelled or timeout');
       } catch (e) {
-        expect(e, anyOf([
-          isA<TaskCancelledException>(),
-          isA<TimeoutException>(), // Also acceptable
-        ]));
+        expect(
+            e,
+            anyOf([
+              isA<TaskCancelledException>(),
+              isA<TimeoutException>(), // Also acceptable
+            ]));
       }
     });
   });
@@ -701,7 +708,7 @@ void main() {
       );
 
       // Give pool time to initialize
-      await Future.delayed(const Duration(milliseconds: 100));
+      await controller.whenReady();
 
       final handle = controller.runTask<int, int>(
         SimpleTask(value: 10),
@@ -724,11 +731,11 @@ void main() {
       );
 
       // Give pool time to initialize
-      await Future.delayed(const Duration(milliseconds: 100));
+      await controller.whenReady();
 
       final handles = List.generate(
         9,
-            (i) => controller.runTask<int, int>(SimpleTask(value: i)),
+        (i) => controller.runTask<int, int>(SimpleTask(value: i)),
       );
 
       final results = await Future.wait(

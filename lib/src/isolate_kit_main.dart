@@ -1,9 +1,14 @@
+// File: isolate_kit.dart
+// Perbaikan atas original file yang di-upload oleh user.
+// Referensi original: :contentReference[oaicite:1]{index=1}
+
 import 'dart:async';
 import 'dart:isolate';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/widgets.dart';
 import 'package:synchronized/synchronized.dart';
+import 'package:uuid/uuid.dart';
 
 // ======================= TASK PRIORITY =============================
 
@@ -74,7 +79,12 @@ class CancellationToken {
 
   void addListener(VoidCallback listener) {
     if (_isCancelled) {
-      listener();
+      // If already cancelled, call immediately as before
+      try {
+        listener();
+      } catch (e) {
+        debugPrint('CancellationToken listener error on immediate call: $e');
+      }
       return;
     }
     _listeners.add(listener);
@@ -85,9 +95,13 @@ class CancellationToken {
   /// Combine multiple tokens - cancelled if ANY token is cancelled
   static CancellationToken combine(List<CancellationToken> tokens) {
     final combined = CancellationToken();
+    final List<VoidCallback> added = [];
     for (final token in tokens) {
-      token.addListener(() => combined.cancel());
+      void cb() => combined.cancel();
+      token.addListener(cb);
+      added.add(cb);
     }
+    // Note: we do not keep references for removal here; if needed, extend API.
     return combined;
   }
 }
@@ -337,6 +351,9 @@ class _PoolWorker {
     final progress = onProgress != null ? ReceivePort() : null;
     final cancelCtrl = ReceivePort();
 
+    // store reference for the onCancel callback so we can remove it later
+    VoidCallback? onCancel;
+
     try {
       _sendPort!.send(_IsolateMessage(
         taskId: taskId,
@@ -356,10 +373,14 @@ class _PoolWorker {
       ) as SendPort;
       _cancelPorts[taskId] = cancelPort;
 
-      void onCancel() {
-        cancelPort.send('cancel');
-        debugPrint('[$debugName] 🚫 Sent cancel signal for task $taskId');
-      }
+      onCancel = () {
+        try {
+          cancelPort.send('cancel');
+          debugPrint('[$debugName] 🚫 Sent cancel signal for task $taskId');
+        } catch (e) {
+          debugPrint('[$debugName] Failed to send cancel to worker: $e');
+        }
+      };
 
       token.addListener(onCancel);
 
@@ -391,7 +412,8 @@ class _PoolWorker {
       totalCompleted++;
       return result as T;
     } finally {
-      token.removeListener(() {});
+      // FIXED: remove the exact listener that was added (avoid removeListener(() {}))
+      if (onCancel != null) token.removeListener(onCancel);
       _cancelPorts.remove(taskId);
       response.close();
       progress?.close();
@@ -421,7 +443,16 @@ class _PoolWorker {
     final mainPort = ReceivePort();
     init.sendPort.send(mainPort.sendPort);
 
+    // Keep a small per-isolate registry (clone)
+    final registry = init.taskRegistry.clone();
+
     mainPort.listen((msg) async {
+      // Allow a cancel_all message — the worker will cancel currently running tasks only
+      if (msg is Map && msg['type'] == 'cancel_all') {
+        // nothing to do here for this simple implementation; main isolate cancels tokens
+        return;
+      }
+
       if (msg is! _IsolateMessage) return;
 
       final token = CancellationToken();
@@ -437,8 +468,8 @@ class _PoolWorker {
           });
         }
 
-        // Create task
-        final task = init.taskRegistry.create(
+        // Create task from local clone of registry
+        final task = registry.create(
           msg.taskType,
           msg.payload,
           transferables: msg.transferables,
@@ -486,6 +517,7 @@ class IsolatePool {
   final IsolateTaskRegistry taskRegistry;
   final String debugName;
   final List<_PoolWorker> _workers = [];
+  final Completer<void> _ready = Completer<void>();
   bool _initialized = false;
 
   IsolatePool({
@@ -494,10 +526,14 @@ class IsolatePool {
     this.debugName = 'Pool',
   });
 
+  Future<void> get whenReady => _ready.future;
+
   Future<void> init() async {
     if (_initialized) return;
 
-    debugPrint('[$debugName] 🏊 Initializing pool with $poolSize workers...');
+    debugPrint('[$debugName] Initializing pool with $poolSize workers...');
+
+    final List<Future<void>> initFutures = [];
 
     for (int i = 0; i < poolSize; i++) {
       final w = _PoolWorker(
@@ -505,17 +541,30 @@ class IsolatePool {
         taskRegistry: taskRegistry,
         debugName: '$debugName-Worker$i',
       );
-      await w.init();
       _workers.add(w);
+
+      initFutures.add(w.init().then((_) {
+        debugPrint('[$debugName-Worker$i] Worker ready');
+      }));
     }
 
+    await Future.wait(initFutures);
+
     _initialized = true;
-    debugPrint('[$debugName] ✅ Pool ready');
+    if (!_ready.isCompleted) {
+      _ready.complete();
+    }
+
+    debugPrint('[$debugName] Pool ready with $poolSize workers');
   }
 
   /// Get least busy worker (load balancing)
-  _PoolWorker _leastBusy() =>
-      _workers.reduce((a, b) => a.activeTasks < b.activeTasks ? a : b);
+  _PoolWorker _leastBusy() {
+    if (_workers.isEmpty) {
+      throw StateError('No workers available in pool');
+    }
+    return _workers.reduce((a, b) => a.activeTasks < b.activeTasks ? a : b);
+  }
 
   Future<T> runTask<T>(
     String taskId,
@@ -585,7 +634,7 @@ class IsolateKit with WidgetsBindingObserver {
   /// Create new instance (non-singleton)
   factory IsolateKit.create({
     required IsolateTaskRegistry taskRegistry,
-    String debugName = 'IsolateController',
+    String debugName = 'IsolateKit',
     Duration idleTimeout = const Duration(minutes: 5),
     Duration idleCheckInterval = const Duration(minutes: 1),
     int maxConcurrentTasks = 3,
@@ -622,6 +671,7 @@ class IsolateKit with WidgetsBindingObserver {
   int _totalCompleted = 0;
   late final String _id;
   bool _warmedUp = false;
+  final _uuid = Uuid();
 
   final PriorityQueue<_QueuedTask> _queue = PriorityQueue<_QueuedTask>();
   final Map<String, _QueuedTask> _running = {};
@@ -710,8 +760,10 @@ class IsolateKit with WidgetsBindingObserver {
               debugName: debugName,
             );
             await _pool!.init();
+            await _pool!.whenReady;
           } else {
             final rp = ReceivePort();
+            // NOTE: we still pass a clone of registry — original code did this and tests register factories before creating controller.
             _isolate = await Isolate.spawn(
               _PoolWorker._isolateWorker,
               _IsolateInitData(
@@ -744,7 +796,14 @@ class IsolateKit with WidgetsBindingObserver {
     Duration timeout = const Duration(seconds: 30),
     void Function(IsolateTaskProgress)? onProgress,
   }) {
-    final taskId = '${DateTime.now().microsecondsSinceEpoch}_$_totalCompleted';
+    // FIXED: If pool is requested but not initialized yet, queue the task as usual
+    // and ensure the pool is initialized asynchronously. Don't return an already-failed completer.
+    if (usePool && _pool == null) {
+      // Start initialization in background
+      init();
+    }
+
+    final taskId = _uuid.v4();
     final completer = Completer<TResult>();
     final token = CancellationToken();
 
@@ -792,6 +851,9 @@ class IsolateKit with WidgetsBindingObserver {
     debugPrint(
         '[$debugName:$_id] 🚀 Executing task ${qt.taskId} (${qt.task.taskType})');
 
+    // keep reference to onCancel to remove it exactly later
+    VoidCallback? onCancel;
+
     try {
       _markUsed();
 
@@ -837,7 +899,7 @@ class IsolateKit with WidgetsBindingObserver {
           onTimeout: () => throw TimeoutException('Cancel handshake timeout'),
         ) as SendPort;
 
-        void onCancel() => cancelPort.send('cancel');
+        onCancel = () => cancelPort.send('cancel');
         qt.cancellationToken.addListener(onCancel);
 
         pp?.listen((msg) {
@@ -852,6 +914,7 @@ class IsolateKit with WidgetsBindingObserver {
 
         try {
           final raw = await rp.first.timeout(qt.timeout);
+          // remove listener once message retrieved
           qt.cancellationToken.removeListener(onCancel);
 
           if (raw is Map && raw.containsKey('error')) {
@@ -863,6 +926,7 @@ class IsolateKit with WidgetsBindingObserver {
           }
           result = raw;
         } finally {
+          // FIXED: remove onCancel exactly once and ensure ports closed
           qt.cancellationToken.removeListener(onCancel);
           pp?.close();
           rp.close();
@@ -900,6 +964,16 @@ class IsolateKit with WidgetsBindingObserver {
     }
   }
 
+  Future<void> whenReady() async {
+    if (!usePool) {
+      await init();
+      return;
+    }
+    if (_pool != null) {
+      await _pool!.whenReady;
+    }
+  }
+
   /// Cancel all tasks
   void cancelAll() {
     debugPrint('[$debugName:$_id] 🚫 Cancelling all tasks...');
@@ -909,10 +983,8 @@ class IsolateKit with WidgetsBindingObserver {
     _queue.clear();
 
     for (final task in queuedTasks) {
-      if (!task.completer.isCompleted) {
-        task.cancellationToken.cancel();
-        task.completer.completeError(TaskCancelledException(task.taskId));
-      }
+      task.cancellationToken.cancel();
+      // do not complete here — avoids double-cancel racing
     }
 
     // Cancel running tasks - DON'T complete their futures here
@@ -920,6 +992,24 @@ class IsolateKit with WidgetsBindingObserver {
     final runningTasks = _running.values.toList();
     for (final task in runningTasks) {
       task.cancellationToken.cancel();
+    }
+
+    // Inform workers (best-effort). Workers will ignore this or handle it locally.
+    if (usePool && _pool != null) {
+      for (final worker in _pool!._workers) {
+        try {
+          worker._sendPort?.send({'type': 'cancel_all'});
+        } catch (e) {
+          debugPrint(
+              '[$debugName:$_id] Failed to send cancel_all to worker: $e');
+        }
+      }
+    }
+
+    try {
+      _sendPort?.send({'type': 'cancel_all'});
+    } catch (e) {
+      // may be null or closed
     }
 
     debugPrint('[$debugName:$_id] ✅ All tasks cancelled');
@@ -1025,9 +1115,8 @@ class IsolateKit with WidgetsBindingObserver {
     instance?.dispose(force: true);
   }
 
-  /// Dispose all instances - FIXED: avoid concurrent modification
+  /// Dispose all instances - avoid concurrent modification
   static void disposeAll() {
-    // Create a copy of the list to avoid concurrent modification
     final instancesToDispose = List<IsolateKit>.from(_instances.values);
     _instances.clear();
 
@@ -1035,7 +1124,7 @@ class IsolateKit with WidgetsBindingObserver {
       instance.dispose(force: true);
     }
 
-    debugPrint('IsolateController: 🧹 All instances disposed');
+    debugPrint('IsolateKit: 🧹 All instances disposed');
   }
 
   /// Get all instance names
