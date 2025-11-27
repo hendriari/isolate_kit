@@ -8,8 +8,8 @@ import 'package:isolate_kit/isolate_kit.dart';
 import 'transferable_helper.dart';
 
 /// Test helper utilities for isolate_controller tests
-class HelperTest {
-  HelperTest._();
+class TestHelper {
+  TestHelper._();
 
   /// Create a basic test registry with common tasks
   static IsolateTaskRegistry createBasicRegistry() {
@@ -460,14 +460,14 @@ class TestFixtures {
   TestFixtures._();
 
   /// Small data (< 100KB)
-  static Uint8List get smallData => HelperTest.createTestData(50 * 1024);
+  static Uint8List get smallData => TestHelper.createTestData(50 * 1024);
 
   /// Large data (> 100KB)
-  static Uint8List get largeData => HelperTest.createTestData(200 * 1024);
+  static Uint8List get largeData => TestHelper.createTestData(200 * 1024);
 
   /// Very large data (> 1MB)
   static Uint8List get veryLargeData =>
-      HelperTest.createTestData(2 * 1024 * 1024);
+      TestHelper.createTestData(2 * 1024 * 1024);
 
   /// Common test values
   static const int defaultTimeout = 5000;

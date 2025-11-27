@@ -88,16 +88,30 @@ class CancellationToken {
   void removeListener(VoidCallback listener) => _listeners.remove(listener);
 
   /// Combine multiple tokens - cancelled if ANY token is cancelled
-  static CancellationToken combine(List<CancellationToken> tokens) {
-    final combined = CancellationToken();
-    final List<VoidCallback> added = [];
+  static CombinedCancellationToken combine(List<CancellationToken> tokens) {
+    final combined = CombinedCancellationToken();
+
     for (final token in tokens) {
       void cb() => combined.cancel();
       token.addListener(cb);
-      added.add(cb);
+      combined._sourceTokens.add(token);
+      combined._callbacks.add(cb);
     }
-    // Note: no removal API for combined listeners in this simple implementation.
+
     return combined;
+  }
+}
+
+class CombinedCancellationToken extends CancellationToken {
+  final List<CancellationToken> _sourceTokens = [];
+  final List<VoidCallback> _callbacks = [];
+
+  void dispose() {
+    for (int i = 0; i < _sourceTokens.length; i++) {
+      _sourceTokens[i].removeListener(_callbacks[i]);
+    }
+    _sourceTokens.clear();
+    _callbacks.clear();
   }
 }
 
@@ -326,21 +340,24 @@ class _PoolWorker {
       debugName: debugName,
       errorsAreFatal: false,
     );
-    _sendPort = await rp.first.timeout(
-      const Duration(seconds: 10),
-      onTimeout: () => throw TimeoutException('Worker init timeout'),
-    ) as SendPort;
-    rp.close();
+    try {
+      _sendPort = await rp.first.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw TimeoutException('Worker init timeout'),
+      ) as SendPort;
+    } finally {
+      rp.close();
+    }
     debugPrint('[$debugName] ✅ Worker initialized');
   }
 
   Future<T> runTask<T>(
-    String taskId,
-    IsolateTask task, {
-    required Duration timeout,
-    void Function(IsolateTaskProgress)? onProgress,
-    required CancellationToken token,
-  }) async {
+      String taskId,
+      IsolateTask task, {
+        required Duration timeout,
+        void Function(IsolateTaskProgress)? onProgress,
+        required CancellationToken token,
+      }) async {
     activeTasks++;
     _lastUsed = DateTime.now();
 
@@ -350,6 +367,7 @@ class _PoolWorker {
 
     // store reference for the onCancel callback so we can remove it later
     VoidCallback? onCancel;
+    bool completedSuccessfully = false;
 
     try {
       // _sendPort must not be null here; caller should await whenReady
@@ -407,16 +425,25 @@ class _PoolWorker {
         throw Exception('Task error: $err');
       }
 
+      // Task completed successfully
       totalCompleted++;
+      completedSuccessfully = true;
       return result as T;
     } finally {
-      // remove the exact listener that was added (avoid removeListener(() {}))
-      if (onCancel != null) token.removeListener(onCancel);
+      // Clean up resources
+      if (onCancel != null) {
+        token.removeListener(onCancel);
+      }
       _cancelPorts.remove(taskId);
       response.close();
       progress?.close();
       cancelCtrl.close();
       activeTasks--;
+
+      // Only log success if task actually completed
+      if (completedSuccessfully) {
+        debugPrint('[$debugName] ✅ Worker completed task $taskId (total: $totalCompleted)');
+      }
     }
   }
 
@@ -676,7 +703,8 @@ class IsolateKit with WidgetsBindingObserver {
   Isolate? _isolate;
   SendPort? _sendPort;
   IsolatePool? _pool;
-  final _lock = Lock();
+  final _queueLock = Lock();
+  final _initLock = Lock();
   Timer? _idleTimer;
   DateTime? _lastUsed;
   DateTime? _spawnTime;
@@ -761,7 +789,7 @@ class IsolateKit with WidgetsBindingObserver {
   }
 
   /// Initialize isolate/pool
-  Future<void> init() async => _lock.synchronized(() async {
+  Future<void> init() async => _initLock.synchronized(() async {
         if (_isolate != null || (_pool != null && _pool!._initialized)) return;
         _markUsed();
 
@@ -826,37 +854,44 @@ class IsolateKit with WidgetsBindingObserver {
       cancellationToken: token,
     );
 
-    _queue.add(queued);
-    debugPrint(
-        '[$debugName:$_id] 📥 Task $taskId queued (priority: ${task.priority})');
-    _processQueue();
+    _queueLock.synchronized(() {
+      _queue.add(queued);
+      debugPrint(
+          '[$debugName:$_id] 📥 Task $taskId queued (priority: ${task.priority})');
+      _processQueue();
+    });
 
     return TaskHandle._(taskId: taskId, future: completer.future, token: token);
   }
 
-  void _processQueue() {
-    scheduleMicrotask(() {
+  Future<void> _processQueue() async {
+    final tasksToExecute = <_QueuedTask>[];
+
+    await _queueLock.synchronized(() {
       while (_activeTasks < maxConcurrentTasks && _queue.isNotEmpty) {
         final qt = _queue.removeFirst();
 
-        // Skip cancelled tasks
+        // ✅ FIX: Complete cancelled tasks immediately
         if (qt.cancellationToken.isCancelled) {
-          if (!qt.completer.isCompleted) {
-            if (!qt._done) {
-              qt._done = true;
+          if (!qt._done) {
+            qt._done = true;
+            if (!qt.completer.isCompleted) {
               qt.completer.completeError(TaskCancelledException(qt.taskId));
             }
           }
-          debugPrint(
-              '[$debugName:$_id] ⏭️  Skipped cancelled task ${qt.taskId}');
-          continue;
+          continue; // Skip to next task
         }
 
         _activeTasks++;
         _running[qt.taskId] = qt;
-        _executeTask(qt);
+        tasksToExecute.add(qt);
       }
     });
+
+    // Execute outside of lock
+    for (final qt in tasksToExecute) {
+      _executeTask(qt);
+    }
   }
 
   Future<void> _executeTask(_QueuedTask qt) async {
@@ -929,6 +964,7 @@ class IsolateKit with WidgetsBindingObserver {
           final raw = await rp.first.timeout(qt.timeout);
           // remove listener once message retrieved
           qt.cancellationToken.removeListener(onCancel);
+          onCancel = null; // Prevent double removal
 
           if (raw is Map && raw.containsKey('error')) {
             final err = raw['error'].toString();
@@ -939,52 +975,71 @@ class IsolateKit with WidgetsBindingObserver {
           }
           result = raw;
         } finally {
-          // FIXED: remove onCancel exactly once and ensure ports closed
-          qt.cancellationToken.removeListener(onCancel);
+          // Ensure listener is removed
+          if (onCancel != null) {
+            qt.cancellationToken.removeListener(onCancel);
+          }
           pp?.close();
           rp.close();
           cp.close();
         }
       }
 
+      // Complete the task successfully
       if (!qt.cancellationToken.isCancelled && !qt.completer.isCompleted) {
-        if (!qt._done) {
-          qt._done = true;
-          qt.completer.complete(result);
-        }
-        _totalCompleted++;
+        await _queueLock.synchronized(() {
+          if (!qt._done) {
+            qt._done = true;
+            if (!qt.completer.isCompleted) {
+              qt.completer.complete(result);
+            }
+            // ✅ Increment counter INSIDE the lock
+            _totalCompleted++;
+          }
+        });
 
         final duration = DateTime.now().difference(startTime);
         debugPrint(
             '[$debugName:$_id] ✅ Task ${qt.taskId} completed in ${duration.inMilliseconds}ms');
       }
     } on TaskCancelledException {
-      if (!qt.completer.isCompleted) {
+      await _queueLock.synchronized(() {
         if (!qt._done) {
           qt._done = true;
-          qt.completer.completeError(TaskCancelledException(qt.taskId));
+          if (!qt.completer.isCompleted) {
+            qt.completer.completeError(TaskCancelledException(qt.taskId));
+          }
         }
-      }
+      });
       debugPrint('[$debugName:$_id] 🚫 Task ${qt.taskId} cancelled');
     } on TaskTimeoutException catch (e) {
-      if (!qt.completer.isCompleted) {
+      await _queueLock.synchronized(() {
         if (!qt._done) {
           qt._done = true;
-          qt.completer.completeError(e);
+          if (!qt.completer.isCompleted) {
+            qt.completer.completeError(e);
+          }
         }
-      }
+      });
       debugPrint('[$debugName:$_id] ⏱️  Task ${qt.taskId} timeout');
     } catch (e, s) {
-      if (!qt.completer.isCompleted) {
+      await _queueLock.synchronized(() {
         if (!qt._done) {
           qt._done = true;
-          qt.completer.completeError(e, s);
+          if (!qt.completer.isCompleted) {
+            qt.completer.completeError(e, s);
+          }
         }
-      }
+      });
       debugPrint('[$debugName:$_id] ❌ Task ${qt.taskId} error: $e');
     } finally {
-      _activeTasks--;
-      _running.remove(qt.taskId);
+      // Clean up INSIDE lock to ensure consistency
+      await _queueLock.synchronized(() {
+        _activeTasks--;
+        _running.remove(qt.taskId);
+      });
+
+      // Process queue OUTSIDE lock to avoid deadlock
       _processQueue();
     }
   }
@@ -1004,44 +1059,46 @@ class IsolateKit with WidgetsBindingObserver {
   }
 
   /// Cancel all tasks
-  void cancelAll() {
-    debugPrint('[$debugName:$_id] 🚫 Cancelling all tasks...');
+  Future<void> cancelAll() async {
+    await _queueLock.synchronized(() {
+      debugPrint('[$debugName:$_id] 🚫 Cancelling all tasks...');
 
-    // Cancel queued tasks - create a list copy first
-    final queuedTasks = _queue.toList();
-    _queue.clear();
+      // Cancel queued tasks - create a list copy first
+      final queuedTasks = _queue.toList();
+      _queue.clear();
 
-    for (final task in queuedTasks) {
-      // DO NOT complete here — let executor/processQueue handle completion to avoid races
-      task.cancellationToken.cancel();
-    }
+      for (final task in queuedTasks) {
+        // DO NOT complete here — let executor/processQueue handle completion to avoid races
+        task.cancellationToken.cancel();
+      }
 
-    // Cancel running tasks - DON'T complete their futures here
-    // Let _executeTask handle completion
-    final runningTasks = _running.values.toList();
-    for (final task in runningTasks) {
-      task.cancellationToken.cancel();
-    }
+      // Cancel running tasks - DON'T complete their futures here
+      // Let _executeTask handle completion
+      final runningTasks = _running.values.toList();
+      for (final task in runningTasks) {
+        task.cancellationToken.cancel();
+      }
 
-    // Inform workers (best-effort). Workers will ignore this or handle it locally.
-    if (usePool && _pool != null) {
-      for (final worker in _pool!._workers) {
-        try {
-          worker._sendPort?.send({'type': 'cancel_all'});
-        } catch (e) {
-          debugPrint(
-              '[$debugName:$_id] Failed to send cancel_all to worker: $e');
+      // Inform workers (best-effort). Workers will ignore this or handle it locally.
+      if (usePool && _pool != null) {
+        for (final worker in _pool!._workers) {
+          try {
+            worker._sendPort?.send({'type': 'cancel_all'});
+          } catch (e) {
+            debugPrint(
+                '[$debugName:$_id] Failed to send cancel_all to worker: $e');
+          }
         }
       }
-    }
 
-    try {
-      _sendPort?.send({'type': 'cancel_all'});
-    } catch (e) {
-      // may be null or closed
-    }
+      try {
+        _sendPort?.send({'type': 'cancel_all'});
+      } catch (e) {
+        // may be null or closed
+      }
 
-    debugPrint('[$debugName:$_id] ✅ All tasks cancelled');
+      debugPrint('[$debugName:$_id] ✅ All tasks cancelled');
+    });
   }
 
   /// Reset controller (dispose and reinitialize)
@@ -1054,51 +1111,56 @@ class IsolateKit with WidgetsBindingObserver {
   }
 
   /// Dispose controller
-  void dispose({bool force = false}) {
-    if (!force && _activeTasks > 0) {
-      debugPrint(
-          '[$debugName:$_id] ⚠️  Cannot dispose: $_activeTasks active tasks');
-      return;
-    }
-
-    debugPrint('[$debugName:$_id] 🧹 Disposing...');
-
-    _idleTimer?.cancel();
-    _idleTimer = null;
-
-    try {
-      _isolate?.kill(priority: Isolate.immediate);
-    } catch (_) {}
-    _pool?.dispose();
-    _isolate = null;
-    _sendPort = null;
-    _pool = null;
-    _warmedUp = false;
-
-    // Cancel all pending tasks - create copies first
-    final queuedTasks = _queue.toList();
-    _queue.clear();
-
-    for (final task in queuedTasks) {
-      if (!task.completer.isCompleted) {
-        task.cancellationToken.cancel();
-        task.completer.completeError(TaskCancelledException(task.taskId));
+  Future<void> dispose({bool force = false}) async {
+    await _queueLock.synchronized(() {
+      if (!force && _activeTasks > 0) {
+        debugPrint(
+            '[$debugName:$_id] ⚠️  Cannot dispose: $_activeTasks active tasks');
+        return;
       }
-    }
 
-    // Cancel running tasks - DON'T complete their futures here
-    // Let _executeTask handle completion when it detects cancellation
-    final runningTasks = _running.values.toList();
-    _running.clear();
+      debugPrint('[$debugName:$_id] 🧹 Disposing...');
 
-    for (final task in runningTasks) {
-      task.cancellationToken.cancel();
-    }
+      _idleTimer?.cancel();
+      _idleTimer = null;
 
-    WidgetsBinding.instance.removeObserver(this);
-    _instances.removeWhere((key, value) => value == this);
+      try {
+        _isolate?.kill(priority: Isolate.immediate);
+      } catch (_) {}
+      _pool?.dispose();
+      _isolate = null;
+      _sendPort = null;
+      _pool = null;
+      _warmedUp = false;
 
-    debugPrint('[$debugName:$_id] ✅ Disposed');
+      // Cancel all pending tasks - create copies first
+      final queuedTasks = _queue.toList();
+      _queue.clear();
+
+      for (final task in queuedTasks) {
+        task.cancellationToken.cancel();
+        if (!task._done) {
+          task._done = true;
+          if (!task.completer.isCompleted) {
+            task.completer.completeError(TaskCancelledException(task.taskId));
+          }
+        }
+      }
+
+      // Cancel running tasks - DON'T complete their futures here
+      // Let _executeTask handle completion when it detects cancellation
+      final runningTasks = _running.values.toList();
+      _running.clear();
+
+      for (final task in runningTasks) {
+        task.cancellationToken.cancel();
+      }
+
+      WidgetsBinding.instance.removeObserver(this);
+      _instances.removeWhere((key, value) => value == this);
+
+      debugPrint('[$debugName:$_id] ✅ Disposed');
+    });
   }
 
   /// Get controller status
