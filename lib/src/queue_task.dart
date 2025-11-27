@@ -1,4 +1,4 @@
-part of 'isolate_kit_main.dart';
+part of '../isolate_kit.dart';
 
 class _QueuedTask implements Comparable<_QueuedTask> {
   bool _done = false;
