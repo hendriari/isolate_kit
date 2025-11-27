@@ -123,7 +123,7 @@ void main() {
 
   group('IsolateTaskProgress', () {
     test('creates progress with required fields', () {
-      final progress = IsolateTaskProgress(percentage: 0.5);
+      final progress = TaskProgress(percentage: 0.5);
 
       expect(progress.percentage, equals(0.5));
       expect(progress.message, isNull);
@@ -132,7 +132,7 @@ void main() {
     });
 
     test('creates progress with all fields', () {
-      final progress = IsolateTaskProgress(
+      final progress = TaskProgress(
         percentage: 0.75,
         message: 'Processing...',
         data: {'items': 10},
@@ -144,7 +144,7 @@ void main() {
     });
 
     test('toString formats correctly', () {
-      final progress = IsolateTaskProgress(
+      final progress = TaskProgress(
         percentage: 0.456,
         message: 'Working',
       );
@@ -154,7 +154,7 @@ void main() {
     });
 
     test('toJson converts correctly', () {
-      final progress = IsolateTaskProgress(
+      final progress = TaskProgress(
         percentage: 0.8,
         message: 'Almost done',
         data: {'count': 5},
@@ -370,6 +370,50 @@ void main() {
               isA<TimeoutException>(), // In case it times out
             ]));
       }
+    });
+
+    test('createdAt timestamp', () async {
+      final registry = TestHelper.createBasicRegistry();
+      final controller = TestHelper.createTestController(registry: registry);
+
+      final beforeCreate = DateTime.now();
+
+      final handle = controller.runTask<int, int>(
+        SimpleTask(value: 5),
+      );
+
+      final afterCreate = DateTime.now();
+
+      expect(
+        handle.createdAt
+            .isAfter(beforeCreate.subtract(const Duration(seconds: 1))),
+        isTrue,
+      );
+      expect(
+        handle.createdAt.isBefore(afterCreate.add(const Duration(seconds: 1))),
+        isTrue,
+      );
+
+      await handle.future;
+      controller.dispose(force: true);
+    });
+
+    test('timeout with onTimeout callback', () async {
+      final registry = TestHelper.createBasicRegistry();
+      final controller = TestHelper.createTestController(registry: registry);
+
+      final handle = controller.runTask<int, int>(
+        LongRunningTask(duration: 10000),
+      );
+
+      final result = await handle.timeout(
+        const Duration(milliseconds: 100),
+        onTimeout: () => 999,
+      );
+
+      expect(result, equals(999));
+
+      controller.dispose(force: true);
     });
   });
 
@@ -864,9 +908,71 @@ void main() {
         throwsA(predicate((e) => e.toString().contains('not registered'))),
       );
     });
+
+    test('Task with null transferables', () async {
+      final registry = TestHelper.createBasicRegistry();
+      final controller = TestHelper.createTestController(registry: registry);
+
+      await controller.init();
+
+      final handle = controller.runTask<int, int>(
+        SimpleTask(value: 10),
+      );
+
+      final result = await handle.future;
+      expect(result, equals(20));
+
+      controller.dispose(force: true);
+    });
+
+    test('Multiple simultaneous dispose calls', () async {
+      final registry = TestHelper.createBasicRegistry();
+      final controller = TestHelper.createTestController(registry: registry);
+
+      await controller.init();
+
+      // Call dispose multiple times simultaneously
+      final futures = List.generate(
+        5,
+        (_) => controller.dispose(force: true),
+      );
+
+      await Future.wait(futures);
+    });
+
+    test('Reset during active task execution', () async {
+      final registry = TestHelper.createBasicRegistry();
+      final controller = TestHelper.createTestController(registry: registry);
+
+      await controller.init();
+
+      // SHORT duration task
+      final handle = controller.runTask<int, int>(
+        LongRunningTask(duration: 500), // SHORT: 500ms not 5000ms
+      );
+
+      // Don't wait for error - just reset immediately
+      unawaited(handle.future.catchError((e) => -1));
+
+      // Wait briefly then reset
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // Reset will dispose and reinit
+      await controller.reset();
+
+      // Verify reset worked by running new task
+      final newHandle = controller.runTask<int, int>(
+        SimpleTask(value: 42),
+      );
+
+      final result = await newHandle.future;
+      expect(result, equals(84));
+
+      controller.dispose(force: true);
+    });
   });
 
-  group('Coverage Improvement Tests - Error Handling', () {
+  group('Error Handling', () {
     late IsolateKit controller;
     late IsolateTaskRegistry registry;
 
@@ -961,7 +1067,7 @@ void main() {
     });
   });
 
-  group('Coverage Improvement Tests - Timeout Scenarios', () {
+  group('Timeout Scenarios', () {
     late IsolateKit controller;
     late IsolateTaskRegistry registry;
 
@@ -1008,9 +1114,72 @@ void main() {
 
       await expectLater(controller.init(), completes);
     });
+
+    test('Idle timer triggers dispose', () async {
+      final registry = TestHelper.createBasicRegistry();
+
+      // Create controller with very short idle timeout
+      final controller = IsolateKit.create(
+        taskRegistry: registry,
+        debugName: 'IdleTest',
+        idleTimeout: const Duration(milliseconds: 100),
+        idleCheckInterval: const Duration(milliseconds: 50),
+      );
+
+      // Initialize and use it
+      await controller.init();
+
+      final handle = controller.runTask<int, int>(
+        SimpleTask(value: 5),
+      );
+      await handle.future;
+
+      // Wait for idle timeout to trigger
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      // Controller should be disposed by idle timer
+      // (This line is hard to verify without checking internal state)
+
+      controller.dispose(force: true);
+    });
+
+    test('Idle timer does not dispose with active tasks', () async {
+      final registry = TestHelper.createBasicRegistry();
+
+      final controller = IsolateKit.create(
+        taskRegistry: registry,
+        debugName: 'IdleActiveTest',
+        idleTimeout: const Duration(milliseconds: 100),
+        idleCheckInterval: const Duration(milliseconds: 50),
+      );
+
+      await controller.init();
+
+      // Start a long-running task
+      final handle = controller.runTask<int, int>(
+        LongRunningTask(duration: 5000),
+      );
+
+      // Wait past idle timeout
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      // Controller should still be active
+      final status = controller.getStatus();
+      expect(status['activeTasks'], greaterThan(0));
+
+      // Cleanup
+      handle.cancel();
+      try {
+        await handle.future;
+      } catch (_) {
+        // Expected
+      }
+
+      controller.dispose(force: true);
+    });
   });
 
-  group('Coverage Improvement Tests - Edge Cases', () {
+  group('Edge Cases', () {
     late IsolateKit controller;
     late IsolateTaskRegistry registry;
 
@@ -1193,9 +1362,9 @@ void main() {
     });
   });
 
-  group('Coverage Improvement Tests - Status & Inspection', () {
+  group('Status & Inspection', () {
     test('IsolateTaskProgress toString formats correctly', () {
-      final progress = IsolateTaskProgress(
+      final progress = TaskProgress(
         percentage: 0.456789,
         message: 'Processing...',
       );
@@ -1206,7 +1375,7 @@ void main() {
     });
 
     test('IsolateTaskProgress toJson', () {
-      final progress = IsolateTaskProgress(
+      final progress = TaskProgress(
         percentage: 0.75,
         message: 'Almost done',
         data: {'count': 100},
@@ -1220,7 +1389,7 @@ void main() {
     });
 
     test('IsolateTaskProgress without message', () {
-      final progress = IsolateTaskProgress(percentage: 0.5);
+      final progress = TaskProgress(percentage: 0.5);
 
       final str = progress.toString();
       expect(str, contains('50.0%'));
@@ -1228,7 +1397,7 @@ void main() {
     });
   });
 
-  group('Coverage Improvement Tests - Pool Mode Edge Cases', () {
+  group('Pool Mode Edge Cases', () {
     late IsolateKit controller;
     late IsolateTaskRegistry registry;
 
@@ -1274,7 +1443,7 @@ void main() {
     });
   });
 
-  group('Advanced Coverage - Lifecycle (SIMPLIFIED)', () {
+  group('Lifecycle (SIMPLIFIED)', () {
     test('App lifecycle state tracking (without delay)', () async {
       final registry = TestHelper.createBasicRegistry();
       final controller = TestHelper.createTestController(registry: registry);
@@ -1293,136 +1462,7 @@ void main() {
     });
   });
 
-  group('Advanced Coverage - Idle Timeout', () {
-    test('Idle timer triggers dispose', () async {
-      final registry = TestHelper.createBasicRegistry();
-
-      // Create controller with very short idle timeout
-      final controller = IsolateKit.create(
-        taskRegistry: registry,
-        debugName: 'IdleTest',
-        idleTimeout: const Duration(milliseconds: 100),
-        idleCheckInterval: const Duration(milliseconds: 50),
-      );
-
-      // Initialize and use it
-      await controller.init();
-
-      final handle = controller.runTask<int, int>(
-        SimpleTask(value: 5),
-      );
-      await handle.future;
-
-      // Wait for idle timeout to trigger
-      await Future.delayed(const Duration(milliseconds: 200));
-
-      // Controller should be disposed by idle timer
-      // (This line is hard to verify without checking internal state)
-
-      controller.dispose(force: true);
-    });
-
-    test('Idle timer does not dispose with active tasks', () async {
-      final registry = TestHelper.createBasicRegistry();
-
-      final controller = IsolateKit.create(
-        taskRegistry: registry,
-        debugName: 'IdleActiveTest',
-        idleTimeout: const Duration(milliseconds: 100),
-        idleCheckInterval: const Duration(milliseconds: 50),
-      );
-
-      await controller.init();
-
-      // Start a long-running task
-      final handle = controller.runTask<int, int>(
-        LongRunningTask(duration: 5000),
-      );
-
-      // Wait past idle timeout
-      await Future.delayed(const Duration(milliseconds: 200));
-
-      // Controller should still be active
-      final status = controller.getStatus();
-      expect(status['activeTasks'], greaterThan(0));
-
-      // Cleanup
-      handle.cancel();
-      try {
-        await handle.future;
-      } catch (_) {
-        // Expected
-      }
-
-      controller.dispose(force: true);
-    });
-  });
-
-  group('Advanced Coverage - Error Paths', () {
-    test('Task with null transferables', () async {
-      final registry = TestHelper.createBasicRegistry();
-      final controller = TestHelper.createTestController(registry: registry);
-
-      await controller.init();
-
-      final handle = controller.runTask<int, int>(
-        SimpleTask(value: 10),
-      );
-
-      final result = await handle.future;
-      expect(result, equals(20));
-
-      controller.dispose(force: true);
-    });
-
-    test('Multiple simultaneous dispose calls', () async {
-      final registry = TestHelper.createBasicRegistry();
-      final controller = TestHelper.createTestController(registry: registry);
-
-      await controller.init();
-
-      // Call dispose multiple times simultaneously
-      final futures = List.generate(
-        5,
-        (_) => controller.dispose(force: true),
-      );
-
-      await Future.wait(futures);
-    });
-
-    test('Reset during active task execution', () async {
-      final registry = TestHelper.createBasicRegistry();
-      final controller = TestHelper.createTestController(registry: registry);
-
-      await controller.init();
-
-      // SHORT duration task
-      final handle = controller.runTask<int, int>(
-        LongRunningTask(duration: 500), // SHORT: 500ms not 5000ms
-      );
-
-      // Don't wait for error - just reset immediately
-      unawaited(handle.future.catchError((e) => -1));
-
-      // Wait briefly then reset
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      // Reset will dispose and reinit
-      await controller.reset();
-
-      // Verify reset worked by running new task
-      final newHandle = controller.runTask<int, int>(
-        SimpleTask(value: 42),
-      );
-
-      final result = await newHandle.future;
-      expect(result, equals(84));
-
-      controller.dispose(force: true);
-    });
-  });
-
-  group('Advanced Coverage - Queue Management', () {
+  group('Queue Management', () {
     test('Queue processes multiple tasks correctly', () async {
       final registry = TestHelper.createBasicRegistry();
       final controller = TestHelper.createTestController(
@@ -1476,7 +1516,7 @@ void main() {
     });
   });
 
-  group('Advanced Coverage - Registry Edge Cases', () {
+  group('Registry Edge Cases', () {
     test('Create task with null result', () {
       final registry = IsolateTaskRegistry();
 
@@ -1520,7 +1560,7 @@ void main() {
     });
   });
 
-  group('Advanced Coverage - Static Methods', () {
+  group('Static Methods', () {
     test('getInstance with same name returns same instance', () {
       final registry = TestHelper.createBasicRegistry();
 
@@ -1571,52 +1611,6 @@ void main() {
       IsolateKit.disposeAll();
     });
   });
-
-  group('Advanced Coverage - TaskHandle', () {
-    test('TaskHandle createdAt timestamp', () async {
-      final registry = TestHelper.createBasicRegistry();
-      final controller = TestHelper.createTestController(registry: registry);
-
-      final beforeCreate = DateTime.now();
-
-      final handle = controller.runTask<int, int>(
-        SimpleTask(value: 5),
-      );
-
-      final afterCreate = DateTime.now();
-
-      expect(
-        handle.createdAt
-            .isAfter(beforeCreate.subtract(const Duration(seconds: 1))),
-        isTrue,
-      );
-      expect(
-        handle.createdAt.isBefore(afterCreate.add(const Duration(seconds: 1))),
-        isTrue,
-      );
-
-      await handle.future;
-      controller.dispose(force: true);
-    });
-
-    test('TaskHandle timeout with onTimeout callback', () async {
-      final registry = TestHelper.createBasicRegistry();
-      final controller = TestHelper.createTestController(registry: registry);
-
-      final handle = controller.runTask<int, int>(
-        LongRunningTask(duration: 10000),
-      );
-
-      final result = await handle.timeout(
-        const Duration(milliseconds: 100),
-        onTimeout: () => 999,
-      );
-
-      expect(result, equals(999));
-
-      controller.dispose(force: true);
-    });
-  });
 }
 
 class DefaultImplementationTask extends IsolateTask<void, void> {
@@ -1628,7 +1622,7 @@ class DefaultImplementationTask extends IsolateTask<void, void> {
 
   @override
   Future<void> execute({
-    void Function(IsolateTaskProgress)? sendProgress,
+    void Function(TaskProgress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
     await Future.delayed(const Duration(milliseconds: 10));

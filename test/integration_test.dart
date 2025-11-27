@@ -561,7 +561,7 @@ class FibonacciTask extends IsolateTask<int, int> {
 
   @override
   Future<int> execute({
-    void Function(IsolateTaskProgress)? sendProgress,
+    void Function(TaskProgress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
     int fib(int n) {
@@ -603,14 +603,14 @@ class ImageProcessTask extends IsolateTask<Uint8List, Uint8List> {
 
   @override
   Future<Uint8List> execute({
-    void Function(IsolateTaskProgress)? sendProgress,
+    void Function(TaskProgress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
     final result = Uint8List(imageData.length);
     for (int i = 0; i < imageData.length; i++) {
       if (i % 10000 == 0) {
         cancellationToken?.throwIfCancelled();
-        sendProgress?.call(IsolateTaskProgress(
+        sendProgress?.call(TaskProgress(
           percentage: i / imageData.length,
           message: 'Processing pixel $i',
         ));
@@ -640,7 +640,7 @@ class BatchProcessTask extends IsolateTask<int, List<int>> {
 
   @override
   Future<List<int>> execute({
-    void Function(IsolateTaskProgress)? sendProgress,
+    void Function(TaskProgress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
     final results = <int>[];
@@ -649,13 +649,13 @@ class BatchProcessTask extends IsolateTask<int, List<int>> {
       results.add(i * 2);
 
       if (i % 100 == 0) {
-        sendProgress?.call(IsolateTaskProgress(
+        sendProgress?.call(TaskProgress(
           percentage: i / batchSize,
           message: 'Processed $i items',
         ));
       }
     }
-    sendProgress?.call(IsolateTaskProgress(
+    sendProgress?.call(TaskProgress(
       percentage: 1.0,
       message: 'Completed',
     ));
@@ -682,7 +682,7 @@ class LongComputationTask extends IsolateTask<int, int> {
 
   @override
   Future<int> execute({
-    void Function(IsolateTaskProgress)? sendProgress,
+    void Function(TaskProgress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
     var sum = 0;
@@ -723,7 +723,7 @@ class PriorityDemoTask extends IsolateTask<String, String> {
 
   @override
   Future<String> execute({
-    void Function(IsolateTaskProgress)? sendProgress,
+    void Function(TaskProgress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
     await Future.delayed(const Duration(milliseconds: 100));
@@ -754,7 +754,7 @@ class CSVProcessTask extends IsolateTask<String, Map<String, int>> {
 
   @override
   Future<Map<String, int>> execute({
-    void Function(IsolateTaskProgress)? sendProgress,
+    void Function(TaskProgress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
     var processed = 0;
@@ -795,7 +795,7 @@ class FileHashTask extends IsolateTask<Uint8List, String> {
 
   @override
   Future<String> execute({
-    void Function(IsolateTaskProgress)? sendProgress,
+    void Function(TaskProgress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
     var hash = 0;
@@ -828,7 +828,7 @@ class DelayedTask extends IsolateTask<int, int> {
 
   @override
   Future<int> execute({
-    void Function(IsolateTaskProgress)? sendProgress,
+    void Function(TaskProgress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
     const slice = 20; // 20ms slices
@@ -863,7 +863,7 @@ class ErrorProneTask extends IsolateTask<void, void> {
 
   @override
   Future<void> execute({
-    void Function(IsolateTaskProgress)? sendProgress,
+    void Function(TaskProgress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
     if (shouldFail) {
@@ -891,7 +891,7 @@ class DataStreamTask extends IsolateTask<int, List<double>> {
 
   @override
   Future<List<double>> execute({
-    void Function(IsolateTaskProgress)? sendProgress,
+    void Function(TaskProgress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
     final results = <double>[];
@@ -901,7 +901,7 @@ class DataStreamTask extends IsolateTask<int, List<double>> {
       results.add(value);
 
       if (i % 10 == 0) {
-        sendProgress?.call(IsolateTaskProgress(
+        sendProgress?.call(TaskProgress(
           percentage: i / samples,
           message: 'Sample $i',
           data: {'value': value},
@@ -940,7 +940,7 @@ class DataSizeTask extends IsolateTask<Uint8List, int> {
 
   @override
   Future<int> execute({
-    void Function(IsolateTaskProgress)? sendProgress,
+    void Function(TaskProgress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
     cancellationToken?.throwIfCancelled();
