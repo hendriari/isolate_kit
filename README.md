@@ -1,6 +1,8 @@
-# IsolateKit 🚀
+# IsolateKit 🚀 
 
 A powerful and easy-to-use Flutter package for running heavy tasks in the background using Dart Isolates with support for cancellation, progress tracking, task prioritization, and pooling.
+
+[![pub version](https://img.shields.io/pub/v/isolate_kit.svg)](https://pub.dev/packages/isolate_kit)
 
 ## ✨ Key Features
 
