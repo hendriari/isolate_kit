@@ -15,9 +15,9 @@ class TaskProgress {
       'Progress: ${(percentage * 100).toStringAsFixed(1)}%${message != null ? ' - $message' : ''}';
 
   Map<String, dynamic> toJson() => {
-    'percentage': percentage,
-    'message': message,
-    'data': data,
-    'timestamp': timestamp.toIso8601String(),
-  };
+        'percentage': percentage,
+        'message': message,
+        'data': data,
+        'timestamp': timestamp.toIso8601String(),
+      };
 }

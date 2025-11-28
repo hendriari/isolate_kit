@@ -122,10 +122,7 @@ class _MyHomePageState extends State<MyHomePage> {
       imageData[i] = (i % 256);
     }
 
-    final task = ImageGrayscaleTask({
-      'width': 1920,
-      'height': 1080,
-    }, imageData);
+    final task = ImageGrayscaleTask({'width': 1920, 'height': 1080}, imageData);
 
     _runTask(task, 'Image Grayscale');
   }
@@ -151,7 +148,7 @@ class _MyHomePageState extends State<MyHomePage> {
     // DON'T generate CSV in UI thread!
     // Pass only parameters, generate inside isolate
     final task = CsvChunkParserTask({
-      'rows': 500000,  // Generate 500k rows in isolate
+      'rows': 500000, // Generate 500k rows in isolate
       'chunkSize': 10000,
     });
 
@@ -178,19 +175,13 @@ class _MyHomePageState extends State<MyHomePage> {
     // Generate dummy data
     final data = List.generate(100000, (i) => (i % 1000).toDouble());
 
-    final task = BatchNormalizeTask({
-      'batchSize': 1000,
-      'data': data,
-    });
+    final task = BatchNormalizeTask({'batchSize': 1000, 'data': data});
 
     _runTask(task, 'Batch Normalize');
   }
 
   void _runFibonacci() {
-    final task = FibonacciTask({
-      'n': 1000000,
-      'repeats': 200,
-    });
+    final task = FibonacciTask({'n': 1000000, 'repeats': 200});
     _runTask(task, 'Matrix Fibonacci (Heavy)');
   }
 
@@ -215,11 +206,14 @@ class _MyHomePageState extends State<MyHomePage> {
               Text('Warmed Up: ${status['warmedUp']}'),
               Text('Use Pool: ${status['usePool']}'),
               const SizedBox(height: 8),
-              Text('Pool Status:',
-                  style: Theme.of(context).textTheme.titleSmall),
+              Text(
+                'Pool Status:',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
               Text('  Workers: ${status['poolStatus']?['poolSize'] ?? 'N/A'}'),
               Text(
-                  '  Total Active: ${status['poolStatus']?['totalActive'] ?? 'N/A'}'),
+                '  Total Active: ${status['poolStatus']?['totalActive'] ?? 'N/A'}',
+              ),
             ],
           ),
         ),
@@ -316,11 +310,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 runSpacing: 8,
                 alignment: WrapAlignment.center,
                 children: [
-                  _buildTaskButton(
-                    'Fibonacci',
-                    Icons.functions,
-                    _runFibonacci,
-                  ),
+                  _buildTaskButton('Fibonacci', Icons.functions, _runFibonacci),
                   _buildTaskButton(
                     'Normalize Data',
                     Icons.analytics,
@@ -391,12 +381,8 @@ class _MyHomePageState extends State<MyHomePage> {
               const Text(
                 'Monitor the indicators below while the task is in progress!\nUI stays responsive.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontStyle: FontStyle.italic,
-                ),
+                style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
               ),
-
 
               const SizedBox(height: 32),
 
@@ -413,9 +399,9 @@ class _MyHomePageState extends State<MyHomePage> {
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Text(
         title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.bold,
-        ),
+        style: Theme.of(
+          context,
+        ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
       ),
     );
   }
@@ -437,20 +423,14 @@ class _MyHomePageState extends State<MyHomePage> {
 IsolateTaskRegistry getTaskRegistry() {
   final registry = IsolateTaskRegistry();
 
-  registry.register<FibonacciTask>(
-    'FibonacciTask',
-    _createFibonacciTask,
-  );
+  registry.register<FibonacciTask>('FibonacciTask', _createFibonacciTask);
 
   registry.register<ImageGrayscaleTask>(
     'ImageGrayscaleTask',
     _createImageGrayscaleTask,
   );
 
-  registry.register<ImageResizeTask>(
-    'ImageResizeTask',
-    _createImageResizeTask,
-  );
+  registry.register<ImageResizeTask>('ImageResizeTask', _createImageResizeTask);
 
   registry.register<CsvChunkParserTask>(
     'CsvChunkParserTask',
@@ -472,16 +452,16 @@ IsolateTaskRegistry getTaskRegistry() {
 
 // Factory functions
 FibonacciTask _createFibonacciTask(
-    Map<String, dynamic> payload,
-    List<TransferableTypedData>? transferables,
-    ) {
+  Map<String, dynamic> payload,
+  List<TransferableTypedData>? transferables,
+) {
   return FibonacciTask(payload);
 }
 
 ImageGrayscaleTask _createImageGrayscaleTask(
-    Map<String, dynamic> payload,
-    List<TransferableTypedData>? transferables,
-    ) {
+  Map<String, dynamic> payload,
+  List<TransferableTypedData>? transferables,
+) {
   final imageData = transferables != null && transferables.isNotEmpty
       ? transferables[0].materialize().asUint8List()
       : Uint8List(0);
@@ -489,9 +469,9 @@ ImageGrayscaleTask _createImageGrayscaleTask(
 }
 
 ImageResizeTask _createImageResizeTask(
-    Map<String, dynamic> payload,
-    List<TransferableTypedData>? transferables,
-    ) {
+  Map<String, dynamic> payload,
+  List<TransferableTypedData>? transferables,
+) {
   final imageData = transferables != null && transferables.isNotEmpty
       ? transferables[0].materialize().asUint8List()
       : Uint8List(0);
@@ -499,16 +479,16 @@ ImageResizeTask _createImageResizeTask(
 }
 
 CsvChunkParserTask _createCsvChunkParserTask(
-    Map<String, dynamic> payload,
-    List<TransferableTypedData>? transferables,
-    ) {
+  Map<String, dynamic> payload,
+  List<TransferableTypedData>? transferables,
+) {
   return CsvChunkParserTask(payload);
 }
 
 FileChunkHashTask _createFileChunkHashTask(
-    Map<String, dynamic> payload,
-    List<TransferableTypedData>? transferables,
-    ) {
+  Map<String, dynamic> payload,
+  List<TransferableTypedData>? transferables,
+) {
   final fileData = transferables != null && transferables.isNotEmpty
       ? transferables[0].materialize().asUint8List()
       : Uint8List(0);
@@ -516,9 +496,9 @@ FileChunkHashTask _createFileChunkHashTask(
 }
 
 BatchNormalizeTask _createBatchNormalizeTask(
-    Map<String, dynamic> payload,
-    List<TransferableTypedData>? transferables,
-    ) {
+  Map<String, dynamic> payload,
+  List<TransferableTypedData>? transferables,
+) {
   return BatchNormalizeTask(payload);
 }
 
@@ -545,22 +525,33 @@ class FibonacciTask extends IsolateTask<Map<String, dynamic>, int> {
     final n = _payload['n'] as int? ?? 1000000; // Very large number
     final repeats = _payload['repeats'] as int? ?? 100; // Repeat calculation
 
-    sendProgress?.call(TaskProgress(
-      percentage: 0.0,
-      message: 'Starting matrix exponentiation ($repeats passes)...',
-    ));
+    sendProgress?.call(
+      TaskProgress(
+        percentage: 0.0,
+        message: 'Starting matrix exponentiation ($repeats passes)...',
+      ),
+    );
 
     // Matrix multiplication helper
     List<List<int>> multiply(List<List<int>> a, List<List<int>> b) {
       return [
-        [a[0][0] * b[0][0] + a[0][1] * b[1][0], a[0][0] * b[0][1] + a[0][1] * b[1][1]],
-        [a[1][0] * b[0][0] + a[1][1] * b[1][0], a[1][0] * b[0][1] + a[1][1] * b[1][1]]
+        [
+          a[0][0] * b[0][0] + a[0][1] * b[1][0],
+          a[0][0] * b[0][1] + a[0][1] * b[1][1],
+        ],
+        [
+          a[1][0] * b[0][0] + a[1][1] * b[1][0],
+          a[1][0] * b[0][1] + a[1][1] * b[1][1],
+        ],
       ];
     }
 
     // Matrix power using binary exponentiation
     List<List<int>> matrixPower(List<List<int>> base, int exp) {
-      var result = [[1, 0], [0, 1]]; // Identity matrix
+      var result = [
+        [1, 0],
+        [0, 1],
+      ]; // Identity matrix
       var power = base;
 
       while (exp > 0) {
@@ -574,7 +565,10 @@ class FibonacciTask extends IsolateTask<Map<String, dynamic>, int> {
       return result;
     }
 
-    final baseMatrix = [[1, 1], [1, 0]];
+    final baseMatrix = [
+      [1, 1],
+      [1, 0],
+    ];
     int lastResult = 0;
 
     // Perform multiple passes to create sustained CPU load
@@ -584,16 +578,17 @@ class FibonacciTask extends IsolateTask<Map<String, dynamic>, int> {
       final result = matrixPower(baseMatrix, n ~/ repeats);
       lastResult = result[0][0];
 
-      sendProgress?.call(TaskProgress(
-        percentage: (i + 1) / repeats,
-        message: 'Matrix pass ${i + 1}/$repeats',
-      ));
+      sendProgress?.call(
+        TaskProgress(
+          percentage: (i + 1) / repeats,
+          message: 'Matrix pass ${i + 1}/$repeats',
+        ),
+      );
     }
 
-    sendProgress?.call(TaskProgress(
-      percentage: 1.0,
-      message: 'Matrix exponentiation complete!',
-    ));
+    sendProgress?.call(
+      TaskProgress(percentage: 1.0, message: 'Matrix exponentiation complete!'),
+    );
 
     return lastResult;
   }
@@ -613,8 +608,9 @@ class ImageGrayscaleTask extends IsolateTask<Uint8List, String> {
   @override
   String get taskType => 'ImageGrayscaleTask';
   @override
-  List<TransferableTypedData>? get transferables =>
-      [TransferableTypedData.fromList([_imageData])];
+  List<TransferableTypedData>? get transferables => [
+    TransferableTypedData.fromList([_imageData]),
+  ];
 
   @override
   Future<String> execute({
@@ -647,20 +643,19 @@ class ImageGrayscaleTask extends IsolateTask<Uint8List, String> {
       grayscale[i] = (gray * 255).clamp(0, 255).toInt();
 
       if (i % 50000 == 0) {
-        sendProgress?.call(TaskProgress(
-          percentage: i / totalPixels * 0.6,
-          message: 'Grayscale with gamma: ${(i / totalPixels * 100).toStringAsFixed(1)}%',
-        ));
+        sendProgress?.call(
+          TaskProgress(
+            percentage: i / totalPixels * 0.6,
+            message:
+                'Grayscale with gamma: ${(i / totalPixels * 100).toStringAsFixed(1)}%',
+          ),
+        );
       }
     }
 
     // Step 2: Apply Gaussian blur (3x3 convolution - HEAVY!)
     final blurred = Uint8List(totalPixels);
-    final kernel = [
-      1, 2, 1,
-      2, 4, 2,
-      1, 2, 1
-    ];
+    final kernel = [1, 2, 1, 2, 4, 2, 1, 2, 1];
     final kernelSum = 16;
 
     for (int y = 1; y < height - 1; y++) {
@@ -682,17 +677,18 @@ class ImageGrayscaleTask extends IsolateTask<Uint8List, String> {
       }
 
       if (y % 50 == 0) {
-        sendProgress?.call(TaskProgress(
-          percentage: 0.6 + (y / height * 0.4),
-          message: 'Applying blur: row $y/$height',
-        ));
+        sendProgress?.call(
+          TaskProgress(
+            percentage: 0.6 + (y / height * 0.4),
+            message: 'Applying blur: row $y/$height',
+          ),
+        );
       }
     }
 
-    sendProgress?.call(TaskProgress(
-      percentage: 1.0,
-      message: 'Grayscale + blur complete!',
-    ));
+    sendProgress?.call(
+      TaskProgress(percentage: 1.0, message: 'Grayscale + blur complete!'),
+    );
 
     return 'Processed ${width}x$height with gamma correction + Gaussian blur (${blurred.length} bytes)';
   }
@@ -715,8 +711,9 @@ class ImageResizeTask extends IsolateTask<Uint8List, String> {
   String get taskType => 'ImageResizeTask';
 
   @override
-  List<TransferableTypedData>? get transferables =>
-      [TransferableTypedData.fromList([_imageData])];
+  List<TransferableTypedData>? get transferables => [
+    TransferableTypedData.fromList([_imageData]),
+  ];
 
   @override
   Future<String> execute({
@@ -728,10 +725,9 @@ class ImageResizeTask extends IsolateTask<Uint8List, String> {
     final dstWidth = _payload['targetWidth'] as int;
     final dstHeight = _payload['targetHeight'] as int;
 
-    sendProgress?.call(TaskProgress(
-      percentage: 0.0,
-      message: 'Resizing image...',
-    ));
+    sendProgress?.call(
+      TaskProgress(percentage: 0.0, message: 'Resizing image...'),
+    );
 
     final output = Uint8List(dstWidth * dstHeight * 4);
     final xRatio = srcWidth / dstWidth;
@@ -754,17 +750,18 @@ class ImageResizeTask extends IsolateTask<Uint8List, String> {
       }
 
       if (y % 10 == 0) {
-        sendProgress?.call(TaskProgress(
-          percentage: y / dstHeight,
-          message: 'Processing row $y/$dstHeight',
-        ));
+        sendProgress?.call(
+          TaskProgress(
+            percentage: y / dstHeight,
+            message: 'Processing row $y/$dstHeight',
+          ),
+        );
       }
     }
 
-    sendProgress?.call(TaskProgress(
-      percentage: 1.0,
-      message: 'Resize complete!',
-    ));
+    sendProgress?.call(
+      TaskProgress(percentage: 1.0, message: 'Resize complete!'),
+    );
 
     return 'Resized from ${srcWidth}x$srcHeight to ${dstWidth}x$dstHeight';
   }
@@ -791,10 +788,12 @@ class CsvChunkParserTask extends IsolateTask<String, String> {
     final rows = _payload['rows'] as int? ?? 100000;
     final chunkSize = _payload['chunkSize'] as int;
 
-    sendProgress?.call(TaskProgress(
-      percentage: 0.0,
-      message: 'Generating CSV data in isolate...',
-    ));
+    sendProgress?.call(
+      TaskProgress(
+        percentage: 0.0,
+        message: 'Generating CSV data in isolate...',
+      ),
+    );
 
     // Generate CSV INSIDE isolate (not in UI!)
     final csvLines = <String>['id,name,age,score,email,city,country'];
@@ -802,13 +801,17 @@ class CsvChunkParserTask extends IsolateTask<String, String> {
     for (int i = 0; i < rows; i++) {
       cancellationToken?.throwIfCancelled();
 
-      csvLines.add('$i,User$i,${20 + (i % 50)},${i % 100},user$i@example.com,City${i % 100},Country${i % 20}');
+      csvLines.add(
+        '$i,User$i,${20 + (i % 50)},${i % 100},user$i@example.com,City${i % 100},Country${i % 20}',
+      );
 
       if (i % chunkSize == 0 && i > 0) {
-        sendProgress?.call(TaskProgress(
-          percentage: i / rows * 0.5,
-          message: 'Generated $i/$rows rows',
-        ));
+        sendProgress?.call(
+          TaskProgress(
+            percentage: i / rows * 0.5,
+            message: 'Generated $i/$rows rows',
+          ),
+        );
       }
     }
 
@@ -829,17 +832,18 @@ class CsvChunkParserTask extends IsolateTask<String, String> {
       results.add(row);
 
       if (i % chunkSize == 0) {
-        sendProgress?.call(TaskProgress(
-          percentage: 0.5 + (i / csvLines.length * 0.5),
-          message: 'Parsed ${results.length}/${csvLines.length - 1} rows',
-        ));
+        sendProgress?.call(
+          TaskProgress(
+            percentage: 0.5 + (i / csvLines.length * 0.5),
+            message: 'Parsed ${results.length}/${csvLines.length - 1} rows',
+          ),
+        );
       }
     }
 
-    sendProgress?.call(TaskProgress(
-      percentage: 1.0,
-      message: 'CSV parsing complete!',
-    ));
+    sendProgress?.call(
+      TaskProgress(percentage: 1.0, message: 'CSV parsing complete!'),
+    );
 
     return 'Parsed ${results.length} rows from CSV (${csvLines.length - 1} total)';
   }
@@ -859,8 +863,9 @@ class FileChunkHashTask extends IsolateTask<Uint8List, String> {
   @override
   String get taskType => 'FileChunkHashTask';
   @override
-  List<TransferableTypedData>? get transferables =>
-      [TransferableTypedData.fromList([_fileData])];
+  List<TransferableTypedData>? get transferables => [
+    TransferableTypedData.fromList([_fileData]),
+  ];
 
   @override
   Future<String> execute({
@@ -871,10 +876,12 @@ class FileChunkHashTask extends IsolateTask<Uint8List, String> {
     final passes = _payload['passes'] as int? ?? 3;
     final totalChunks = (_fileData.length / chunkSize).ceil();
 
-    sendProgress?.call(TaskProgress(
-      percentage: 0.0,
-      message: 'Starting SHA-256 hashing ($passes passes)...',
-    ));
+    sendProgress?.call(
+      TaskProgress(
+        percentage: 0.0,
+        message: 'Starting SHA-256 hashing ($passes passes)...',
+      ),
+    );
 
     final hashes = <String>[];
 
@@ -894,10 +901,12 @@ class FileChunkHashTask extends IsolateTask<Uint8List, String> {
         chunks.add(_fileData.sublist(start, end));
 
         if (i % 10 == 0) {
-          sendProgress?.call(TaskProgress(
-            percentage: (pass + (i / totalChunks)) / passes,
-            message: 'Pass ${pass + 1}/$passes - Chunk ${i + 1}/$totalChunks',
-          ));
+          sendProgress?.call(
+            TaskProgress(
+              percentage: (pass + (i / totalChunks)) / passes,
+              message: 'Pass ${pass + 1}/$passes - Chunk ${i + 1}/$totalChunks',
+            ),
+          );
         }
       }
 
@@ -905,16 +914,17 @@ class FileChunkHashTask extends IsolateTask<Uint8List, String> {
       final digest = sha256.convert(_fileData);
       hashes.add(digest.toString());
 
-      sendProgress?.call(TaskProgress(
-        percentage: (pass + 1) / passes,
-        message: 'Pass ${pass + 1}/$passes completed',
-      ));
+      sendProgress?.call(
+        TaskProgress(
+          percentage: (pass + 1) / passes,
+          message: 'Pass ${pass + 1}/$passes completed',
+        ),
+      );
     }
 
-    sendProgress?.call(TaskProgress(
-      percentage: 1.0,
-      message: 'SHA-256 hashing complete!',
-    ));
+    sendProgress?.call(
+      TaskProgress(percentage: 1.0, message: 'SHA-256 hashing complete!'),
+    );
 
     return 'SHA-256 hash (${_fileData.length} bytes, $passes passes):\n${hashes.first.substring(0, 32)}...';
   }
@@ -944,10 +954,9 @@ class BatchNormalizeTask extends IsolateTask<List<double>, String> {
     final batchSize = _payload['batchSize'] as int;
     final totalBatches = (data.length / batchSize).ceil();
 
-    sendProgress?.call(TaskProgress(
-      percentage: 0.0,
-      message: 'Normalizing data...',
-    ));
+    sendProgress?.call(
+      TaskProgress(percentage: 0.0, message: 'Normalizing data...'),
+    );
 
     final normalized = <double>[];
 
@@ -964,7 +973,7 @@ class BatchNormalizeTask extends IsolateTask<List<double>, String> {
       // Calculate standard deviation
       final variance =
           batch.map((x) => math.pow(x - mean, 2)).reduce((a, b) => a + b) /
-              batch.length;
+          batch.length;
       final stdDev = math.sqrt(variance);
 
       // Normalize
@@ -972,16 +981,17 @@ class BatchNormalizeTask extends IsolateTask<List<double>, String> {
         normalized.add((value - mean) / (stdDev + 1e-8));
       }
 
-      sendProgress?.call(TaskProgress(
-        percentage: (i + 1) / totalBatches,
-        message: 'Normalized batch ${i + 1}/$totalBatches',
-      ));
+      sendProgress?.call(
+        TaskProgress(
+          percentage: (i + 1) / totalBatches,
+          message: 'Normalized batch ${i + 1}/$totalBatches',
+        ),
+      );
     }
 
-    sendProgress?.call(TaskProgress(
-      percentage: 1.0,
-      message: 'Normalization complete!',
-    ));
+    sendProgress?.call(
+      TaskProgress(percentage: 1.0, message: 'Normalization complete!'),
+    );
 
     return 'Normalized ${normalized.length} values in $totalBatches batches (mean ≈ 0, std ≈ 1)';
   }
