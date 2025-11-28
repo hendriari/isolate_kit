@@ -121,11 +121,11 @@ class TestHelper {
 
 /// Progress tracker for testing
 class ProgressTracker {
-  final List<IsolateTaskProgress> updates = [];
+  final List<TaskProgress> updates = [];
   double? lastPercentage;
   String? lastMessage;
 
-  void track(IsolateTaskProgress progress) {
+  void track(TaskProgress progress) {
     updates.add(progress);
     lastPercentage = progress.percentage;
     lastMessage = progress.message;
@@ -165,7 +165,7 @@ class SimpleTask extends IsolateTask<int, int> {
 
   @override
   Future<int> execute({
-    void Function(IsolateTaskProgress progress)? sendProgress,
+    void Function(TaskProgress progress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
     cancellationToken?.throwIfCancelled();
@@ -194,7 +194,7 @@ class LongRunningTask extends IsolateTask<int, int> {
 
   @override
   Future<int> execute({
-    void Function(IsolateTaskProgress progress)? sendProgress,
+    void Function(TaskProgress progress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
     final steps = 10;
@@ -205,7 +205,7 @@ class LongRunningTask extends IsolateTask<int, int> {
 
       await Future.delayed(Duration(milliseconds: stepDuration));
 
-      sendProgress?.call(IsolateTaskProgress(
+      sendProgress?.call(TaskProgress(
         percentage: (i + 1) / steps,
         message: 'Step ${i + 1}/$steps',
       ));
@@ -235,13 +235,13 @@ class ProgressTask extends IsolateTask<int, int> {
 
   @override
   Future<int> execute({
-    void Function(IsolateTaskProgress progress)? sendProgress,
+    void Function(TaskProgress progress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
     for (int i = 0; i <= steps; i++) {
       cancellationToken?.throwIfCancelled();
 
-      sendProgress?.call(IsolateTaskProgress(
+      sendProgress?.call(TaskProgress(
         percentage: i / steps,
         message: 'Step $i of $steps',
       ));
@@ -272,7 +272,7 @@ class ErrorTask extends IsolateTask<void, void> {
 
   @override
   Future<void> execute({
-    void Function(IsolateTaskProgress progress)? sendProgress,
+    void Function(TaskProgress progress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
     await Future.delayed(const Duration(milliseconds: 50));
@@ -315,7 +315,7 @@ class TransferableTask extends IsolateTask<Uint8List, int> {
 
   @override
   Future<int> execute({
-    void Function(IsolateTaskProgress progress)? sendProgress,
+    void Function(TaskProgress progress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
     cancellationToken?.throwIfCancelled();
@@ -353,7 +353,7 @@ class PriorityTask extends IsolateTask<int, int> {
 
   @override
   Future<int> execute({
-    void Function(IsolateTaskProgress progress)? sendProgress,
+    void Function(TaskProgress progress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
     cancellationToken?.throwIfCancelled();
@@ -374,7 +374,7 @@ class UnregisteredTask extends IsolateTask<void, void> {
 
   @override
   Future<void> execute({
-    void Function(IsolateTaskProgress progress)? sendProgress,
+    void Function(TaskProgress progress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {}
 }
@@ -435,10 +435,10 @@ class TestAssertions {
 
 /// Mock objects for testing
 class MockProgressCallback {
-  final List<IsolateTaskProgress> calls = [];
+  final List<TaskProgress> calls = [];
   int callCount = 0;
 
-  void call(IsolateTaskProgress progress) {
+  void call(TaskProgress progress) {
     calls.add(progress);
     callCount++;
   }
@@ -450,9 +450,9 @@ class MockProgressCallback {
 
   bool get wasCalled => callCount > 0;
 
-  IsolateTaskProgress? get lastCall => calls.isEmpty ? null : calls.last;
+  TaskProgress? get lastCall => calls.isEmpty ? null : calls.last;
 
-  IsolateTaskProgress? get firstCall => calls.isEmpty ? null : calls.first;
+  TaskProgress? get firstCall => calls.isEmpty ? null : calls.first;
 }
 
 /// Test fixtures

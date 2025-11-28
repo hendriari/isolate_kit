@@ -1,81 +1,110 @@
-## 1.0.0 Initial Release 🎉
+## [1.0.0]
+
+### 🎉 Initial Release
+
+The first stable release of IsolateKit - a powerful Flutter package for background task processing with Dart Isolates.
 
 ### Added
 
-1. ✅ True Task Cancellation with CancellationToken
+#### Core Features
 
-    * Proper cleanup and listener support
-    * Cancel handshake protocol between main and worker isolates
-    * throwIfCancelled() for graceful cancellation
+- **Task Cancellation System**
+    - `CancellationToken` with proper cleanup and listener support
+    - Cancel handshake protocol between main and worker isolates
+    - `throwIfCancelled()` method for graceful cancellation handling
+    - Combined cancellation tokens for complex scenarios
 
-2. ✅ Zero-Copy Data Transfer with TransferableTypedData
+- **Zero-Copy Data Transfer**
+    - Support for `TransferableTypedData` for efficient large data transfer
+    - Automatic memory optimization for data over 100KB
+    - No memory copy overhead for binary data
 
-    * TransferableHelper utility class
-    * Automatic threshold detection (100KB)
-    * Efficient transfer of large data without memory copy
+- **Priority-Based Task Scheduling**
+    - Five priority levels: `realtime`, `critical`, `high`, `normal`, `low`
+    - Automatic task sorting by priority
+    - FIFO ordering for tasks with the same priority
+    - Configurable max concurrent tasks
 
-3. ✅ Priority Queue System
+#### Progress & Monitoring
 
-    * 5 priority levels: realtime, critical, high, normal, low
-    * Automatic task sorting
-    * FIFO for same-priority tasks
+- **Real-Time Progress Tracking**
+    - Progress callbacks with percentage, message, and custom data
+    - Timestamp tracking for all progress updates
+    - Non-blocking progress reporting
 
-4. ✅ Progress Callbacks
+- **Comprehensive Status Monitoring**
+    - Per-instance status with detailed metrics
+    - Global status for all instances
+    - Queue details and worker metrics
+    - Active/queued/completed task counters
 
-    * Real-time progress updates
-    * Percentage, message, and custom data support
-    * Timestamp tracking
+#### Performance & Resource Management
 
-5. ✅ Isolate Pooling
+- **Isolate Pooling**
+    - Configurable pool size for optimal performance
+    - Automatic load balancing across workers
+    - Worker health monitoring and statistics
+    - Pool-wide task distribution
 
-    * Configurable pool size
-    * Load balancing across workers
-    * Worker status monitoring
+- **Auto-Dispose & Lifecycle Management**
+    - Configurable idle timeout (default: 5 minutes)
+    - App lifecycle integration (paused/resumed/detached)
+    - Automatic cleanup on app pause/detach
+    - Manual disposal with force option
 
-6. ✅ Auto-Dispose
+- **Warmup Support**
+    - Pre-initialize isolates to eliminate first-call latency
+    - Optional warmup for performance-critical applications
+    - Background initialization without blocking
 
-    * Idle timeout (default: 5 minutes)
-    * App lifecycle integration
-    * Automatic cleanup on app pause/detach
+#### Reliability & Error Handling
 
-7. ✅ Warmup Support
+- **Robust Error Handling**
+    - Custom exception types: `TaskCancelledException`, `TaskTimeoutException`
+    - Stack trace preservation for debugging
+    - Isolate error recovery and restart
+    - Timeout protection for long-running tasks
 
-    * Pre-initialize isolates
-    * Eliminate first-call latency
-    * Optional feature
+- **Type Safety**
+    - Generic `IsolateTask<TCommand, TResult>` base class
+    - Full type inference throughout the API
+    - Compile-time type safety
+    - `TaskHandle<T>` for type-safe task results
 
-8. ✅ Crash-Resistant Error Handling
+#### Developer Experience
 
-    * Proper exception types (TaskCancelledException, TaskTimeoutException)
-    * Stack trace preservation
-    * Isolate error recovery
+- **Task Registry System**
+    - Centralized task registration
+    - Dynamic task creation
+    - Registry cloning for isolate workers
+    - Type-to-string mapping
 
-9. ✅ Type-Safe Generic Support
+- **Multiple Instance Support**
+    - Singleton pattern with named instances via `IsolateKit.instance()`
+    - Factory pattern for non-singleton instances via `IsolateKit.create()`
+    - Instance management utilities (`disposeInstance`, `disposeAll`)
+    - Per-instance configuration
 
-    * IsolateTask<TCommand, TResult>
-    * Full type inference
-    * Compile-time safety
+- **Advanced Task Management**
+    - Task metadata support for debugging
+    - Estimated duration hints for better scheduling
+    - Queue management with waiting time tracking
+    - Task handle with cancellation and timeout support
 
-10. ✅ Advanced Task Management
+### Technical Details
 
-    * Max concurrent tasks limit
-    * Task queueing with metadata
-    * Running task tracking
+- **Dependencies**
+    - `collection`: ^1.18.0 - For priority queue implementation
+    - `synchronized`: ^3.1.0 - For thread-safe operations
+    - `uuid`: ^4.0.0 - For unique task IDs
 
-11. ✅ Multiple Instance Support
+- **Platform Support**
+    - Flutter: >=3.0.0
+    - Dart: >=3.0.0
 
-    * Singleton pattern with named instances
-    * Factory pattern for non-singleton
-    * Instance management utilities
+### Documentation
 
-12. ✅ Comprehensive Status Monitoring
-
-    * Per-instance status
-    * Global status for all instances
-    * Queue details and worker metrics
-
-13. ✅ Lifecycle Management
-
-    * App lifecycle observer
-    * Automatic disposal on app detach
-    * Manual dispose with force option
+- Comprehensive README with examples
+- API documentation for all public classes
+- Best practices guide
+- Error handling patterns
