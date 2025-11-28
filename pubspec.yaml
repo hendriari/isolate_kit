@@ -1,8 +1,8 @@
 name: isolate_kit
 description: "Isolate management for Flutter with task cancellation, zero-copy transfer, priority queue, progress tracking, and auto-dispose."
 version: 1.0.0
-homepage: https://
-repository: https://
+homepage: https://github.com/hendriari/isolate_kit
+repository: https://github.com/hendriari/isolate_kit
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
