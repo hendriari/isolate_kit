@@ -18,7 +18,7 @@ class TaskHandle<T> {
   })  : _token = token,
         createdAt = DateTime.now();
 
-  void cancel() => _token.cancel();
+  Future<bool> cancel() => _token.cancel();
 
   /// Wait with timeout
   Future<T> timeout(Duration duration, {T Function()? onTimeout}) {

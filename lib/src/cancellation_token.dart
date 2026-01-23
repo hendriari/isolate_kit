@@ -13,8 +13,8 @@ class CancellationToken {
 
   Future<void> get cancelled => _cancelledCompleter.future;
 
-  void cancel() {
-    if (_isCancelled) return;
+  Future<bool> cancel() async {
+    if (_isCancelled) return false;
     _isCancelled = true;
 
     if (!_cancelledCompleter.isCompleted) {
@@ -29,6 +29,7 @@ class CancellationToken {
       }
     }
     _listeners.clear();
+    return true;
   }
 
   void throwIfCancelled() {

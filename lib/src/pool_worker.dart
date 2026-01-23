@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:isolate';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:isolate_kit/isolate_kit.dart';
@@ -15,6 +16,10 @@ class PoolWorker {
   final Map<String, SendPort> _cancelPorts = {};
   DateTime? _lastUsed;
 
+  // Mechanism to prevent double initialization
+  bool _isInitializing = false;
+  Completer<void>? _initCompleter;
+
   PoolWorker({
     required this.workerId,
     required this.taskRegistry,
@@ -22,23 +27,42 @@ class PoolWorker {
   });
 
   Future<void> init() async {
-    final rp = ReceivePort();
-    _isolate = await Isolate.spawn(
-      workerEntry,
-      IsolateInitData(
-          sendPort: rp.sendPort, taskRegistry: taskRegistry.clone()),
-      debugName: debugName,
-      errorsAreFatal: false,
-    );
+    if (_isInitializing) return _initCompleter?.future;
+
+    _isInitializing = true;
+    _initCompleter = Completer<void>();
+
     try {
+      final rp = ReceivePort();
+      _isolate = await Isolate.spawn(
+        workerEntry,
+        IsolateInitData(
+            sendPort: rp.sendPort, taskRegistry: taskRegistry.clone()),
+        debugName: debugName,
+        errorsAreFatal: false,
+      );
+
       sendPort = await rp.first.timeout(
         const Duration(seconds: 10),
         onTimeout: () => throw TimeoutException('Worker init timeout'),
       ) as SendPort;
-    } finally {
       rp.close();
+      debugPrint('[$debugName] ✅ Worker initialized and ready');
+    } catch (e) {
+      debugPrint('[$debugName] ❌ Worker init failed: $e');
+      dispose();
+      rethrow;
+    } finally {
+      _isInitializing = false;
+      _initCompleter?.complete();
     }
-    debugPrint('[$debugName] ✅ Worker initialized');
+  }
+
+  /// Ensure Isolate is ready to use before submitting the assignment.
+  Future<void> _ensureReady() async {
+    if (_isolate == null || sendPort == null) {
+      await init();
+    }
   }
 
   Future<T> runTask<T>(
@@ -48,6 +72,8 @@ class PoolWorker {
     void Function(TaskProgress)? onProgress,
     required CancellationToken token,
   }) async {
+    await _ensureReady();
+
     activeTasks++;
     _lastUsed = DateTime.now();
 
@@ -55,12 +81,13 @@ class PoolWorker {
     final progress = onProgress != null ? ReceivePort() : null;
     final cancelCtrl = ReceivePort();
 
-    // store reference for the onCancel callback so we can remove it later
     VoidCallback? onCancel;
     bool completedSuccessfully = false;
+    bool poisoned = false; // Flag if isolate crashes
 
     try {
-      // _sendPort must not be null here; caller should await whenReady
+      if (sendPort == null) throw Exception('Worker sendPort is null');
+
       sendPort!.send(IsolateMessage(
         taskId: taskId,
         taskType: task.taskType,
@@ -72,25 +99,33 @@ class PoolWorker {
         transferables: task.transferables,
       ));
 
-      // Handshake for cancellation
-      final cancelPort = await cancelCtrl.first.timeout(
-        const Duration(seconds: 5),
-        onTimeout: () => throw TimeoutException('Cancel handshake timeout'),
-      ) as SendPort;
+      // 1. Handshake for cancellation
+      SendPort? cancelPort;
+      try {
+        cancelPort = await cancelCtrl.first.timeout(
+          const Duration(seconds: 5),
+        ) as SendPort;
+      } on TimeoutException {
+        debugPrint(
+            '[$debugName] 🚨 Handshake timeout - Isolate unresponsive. Marking as poisoned.');
+        poisoned = true;
+        throw TimeoutException('Cancel handshake timeout');
+      }
+
       _cancelPorts[taskId] = cancelPort;
 
       onCancel = () {
         try {
-          cancelPort.send('cancel');
+          cancelPort?.send('cancel');
           debugPrint('[$debugName] 🚫 Sent cancel signal for task $taskId');
         } catch (e) {
-          debugPrint('[$debugName] Failed to send cancel to worker: $e');
+          debugPrint('[$debugName] Failed to send cancel signal: $e');
         }
       };
 
       token.addListener(onCancel);
 
-      // Progress listener
+      // 2. Listener for progress
       progress?.listen((msg) {
         if (msg is Map && !token.isCancelled) {
           onProgress?.call(TaskProgress(
@@ -101,10 +136,15 @@ class PoolWorker {
         }
       });
 
-      // Wait for result
+      // 3. Waiting for the results of the assignment
       final result = await response.first.timeout(
         timeout,
-        onTimeout: () => throw TaskTimeoutException(taskId, timeout),
+        onTimeout: () {
+          debugPrint(
+              '[$debugName] ⏱️ Task $taskId timed out. Isolate might be stuck. Marking as poisoned.');
+          poisoned = true;
+          throw TaskTimeoutException(taskId, timeout);
+        },
       );
 
       if (result is Map && result.containsKey('error')) {
@@ -115,12 +155,11 @@ class PoolWorker {
         throw Exception('Task error: $err');
       }
 
-      // Task completed successfully
       totalCompleted++;
       completedSuccessfully = true;
       return result as T;
     } finally {
-      // Clean up resources
+      // Resource cleanup
       if (onCancel != null) {
         token.removeListener(onCancel);
       }
@@ -128,12 +167,18 @@ class PoolWorker {
       response.close();
       progress?.close();
       cancelCtrl.close();
-      activeTasks--;
 
-      // Only log success if task actually completed
+      activeTasks = math.max(0, activeTasks - 1);
+
+      // If Isolate is stuck/poisoned, we kill it now so the next task can trigger a fresh init().
+      if (poisoned) {
+        debugPrint('[$debugName] 🧹 Killing poisoned worker to recover...');
+        dispose();
+      }
+
       if (completedSuccessfully) {
         debugPrint(
-            '[$debugName] ✅ Worker completed task $taskId (total: $totalCompleted)');
+            '[$debugName] ✅ Task $taskId completed (Total: $totalCompleted)');
       }
     }
   }
@@ -153,6 +198,7 @@ class PoolWorker {
         'activeTasks': activeTasks,
         'totalCompleted': totalCompleted,
         'lastUsed': _lastUsed?.toIso8601String(),
+        'isAlive': _isolate != null,
       };
 
   static void workerEntry(IsolateInitData init) => isolateWorker(init);
@@ -161,32 +207,22 @@ class PoolWorker {
     final mainPort = ReceivePort();
     init.sendPort.send(mainPort.sendPort);
 
-    // Keep a small per-isolate registry (clone)
     final registry = init.taskRegistry.clone();
 
     mainPort.listen((msg) async {
-      // Allow a cancel_all message — the worker will cancel currently running tasks only
-      if (msg is Map && msg['type'] == 'cancel_all') {
-        // nothing to do here for this simple implementation; main isolate cancels tokens
-        return;
-      }
-
+      if (msg is Map && msg['type'] == 'cancel_all') return;
       if (msg is! IsolateMessage) return;
 
       final token = CancellationToken();
       ReceivePort? cancelRp;
 
       try {
-        // Setup cancellation
         if (msg.cancelControlPort != null) {
           cancelRp = ReceivePort();
           msg.cancelControlPort!.send(cancelRp.sendPort);
-          cancelRp.listen((_) {
-            token.cancel();
-          });
+          cancelRp.listen((_) => token.cancel());
         }
 
-        // Create task from local clone of registry
         final task = registry.create(
           msg.taskType,
           msg.payload,
@@ -197,7 +233,9 @@ class PoolWorker {
           throw Exception('Task "${msg.taskType}" not registered');
         }
 
-        // Execute task
+        // Give the event loop a little breather before heavy execution
+        await Future.delayed(Duration.zero);
+
         final result = await task.execute(
           sendProgress: msg.progressPort != null
               ? (p) {

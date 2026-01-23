@@ -211,7 +211,7 @@ class IsolateKit with WidgetsBindingObserver {
   /// Run task with full feature support
   TaskHandle<TResult> runTask<TCommand, TResult>(
     IsolateTask<TCommand, TResult> task, {
-    Duration timeout = const Duration(seconds: 30),
+    Duration timeout = const Duration(seconds: 60),
     void Function(TaskProgress)? onProgress,
   }) {
     // If pool is requested but not yet created, start initialization in background
@@ -250,7 +250,6 @@ class IsolateKit with WidgetsBindingObserver {
       while (_activeTasks < maxConcurrentTasks && _queue.isNotEmpty) {
         final qt = _queue.removeFirst();
 
-        // ✅ FIX: Complete cancelled tasks immediately
         if (qt.cancellationToken.isCancelled) {
           if (!qt._done) {
             qt._done = true;
@@ -274,17 +273,14 @@ class IsolateKit with WidgetsBindingObserver {
   }
 
   Future<void> _executeTask(_QueuedTask qt) async {
-    final startTime = DateTime.now();
     debugPrint(
         '[$debugName:$_id] 🚀 Executing task ${qt.taskId} (${qt.task.taskType})');
 
-    // keep reference to onCancel to remove it exactly later
-    VoidCallback? onCancel;
+    final VoidCallback? onCancel;
 
     try {
       _markUsed();
 
-      // Check if already cancelled before starting
       if (qt.cancellationToken.isCancelled) {
         throw TaskCancelledException(qt.taskId);
       }
@@ -321,6 +317,7 @@ class IsolateKit with WidgetsBindingObserver {
           transferables: qt.task.transferables,
         ));
 
+        // Handshake pembatalan
         final cancelPort = await cp.first.timeout(
           const Duration(seconds: 5),
           onTimeout: () => throw TimeoutException('Cancel handshake timeout'),
@@ -340,10 +337,8 @@ class IsolateKit with WidgetsBindingObserver {
         });
 
         try {
+          // DISINI TIMEOUT TERJADI
           final raw = await rp.first.timeout(qt.timeout);
-          // remove listener once message retrieved
-          qt.cancellationToken.removeListener(onCancel);
-          onCancel = null; // Prevent double removal
 
           if (raw is Map && raw.containsKey('error')) {
             final err = raw['error'].toString();
@@ -353,10 +348,17 @@ class IsolateKit with WidgetsBindingObserver {
             throw Exception(err);
           }
           result = raw;
+        } on TimeoutException {
+          // JIKA NON-POOL TIMEOUT, KITA HARUS BUNUH ISOLATE-NYA
+          debugPrint(
+              '[$debugName:$_id] 🚨 Non-pool isolate timeout. Killing isolate to recover.');
+          _isolate?.kill(priority: Isolate.immediate);
+          _isolate = null;
+          _sendPort = null;
+          throw TaskTimeoutException(qt.taskId, qt.timeout);
         } finally {
-          // Ensure listener is removed
-          if (onCancel != null) {
-            qt.cancellationToken.removeListener(onCancel);
+          if (onCancel case final cb) {
+            qt.cancellationToken.removeListener(cb);
           }
           pp?.close();
           rp.close();
@@ -364,62 +366,43 @@ class IsolateKit with WidgetsBindingObserver {
         }
       }
 
-      // Complete the task successfully
+      // Berhasil
       if (!qt.cancellationToken.isCancelled && !qt.completer.isCompleted) {
         await _queueLock.synchronized(() {
           if (!qt._done) {
             qt._done = true;
-            if (!qt.completer.isCompleted) {
-              qt.completer.complete(result);
-            }
-            // ✅ Increment counter INSIDE the lock
+            qt.completer.complete(result);
             _totalCompleted++;
           }
         });
-
-        final duration = DateTime.now().difference(startTime);
-        debugPrint(
-            '[$debugName:$_id] ✅ Task ${qt.taskId} completed in ${duration.inMilliseconds}ms');
+        debugPrint('[$debugName:$_id] ✅ Task ${qt.taskId} completed');
       }
-    } on TaskCancelledException {
-      await _queueLock.synchronized(() {
-        if (!qt._done) {
-          qt._done = true;
-          if (!qt.completer.isCompleted) {
-            qt.completer.completeError(TaskCancelledException(qt.taskId));
-          }
-        }
-      });
-      debugPrint('[$debugName:$_id] 🚫 Task ${qt.taskId} cancelled');
-    } on TaskTimeoutException catch (e) {
-      await _queueLock.synchronized(() {
-        if (!qt._done) {
-          qt._done = true;
-          if (!qt.completer.isCompleted) {
-            qt.completer.completeError(e);
-          }
-        }
-      });
-      debugPrint('[$debugName:$_id] ⏱️  Task ${qt.taskId} timeout');
     } catch (e, s) {
+      // Penanganan Error (Cancel, Timeout, atau General Error)
       await _queueLock.synchronized(() {
         if (!qt._done) {
           qt._done = true;
-          if (!qt.completer.isCompleted) {
-            qt.completer.completeError(e, s);
-          }
+          qt.completer.completeError(e, s);
         }
       });
-      debugPrint('[$debugName:$_id] ❌ Task ${qt.taskId} error: $e');
+
+      // Jika error handshake timeout (bukan dari rp.first.timeout),
+      // juga sebaiknya reset isolate
+      if (e is TimeoutException &&
+          e.message?.contains('handshake') == true &&
+          !usePool) {
+        _isolate?.kill(priority: Isolate.immediate);
+        _isolate = null;
+        _sendPort = null;
+      }
+
+      debugPrint('[$debugName:$_id] ❌ Task ${qt.taskId} failed: $e');
     } finally {
-      // Clean up INSIDE lock to ensure consistency
       await _queueLock.synchronized(() {
         _activeTasks--;
         _running.remove(qt.taskId);
       });
-
-      // Process queue OUTSIDE lock to avoid deadlock
-      _processQueue();
+      _processQueue(); // Jalankan antrean berikutnya
     }
   }
 
