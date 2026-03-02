@@ -1,3 +1,9 @@
+## [1.0.2]
+
+### Updated :
+
+- minor update
+
 ## [1.0.1]
 
 ### Updated :
