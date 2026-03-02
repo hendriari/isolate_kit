@@ -25,7 +25,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  isolate_kit: ^1.0.1
+  isolate_kit: ^newer.version
 ```
 
 ## 🚀 Quick Start
