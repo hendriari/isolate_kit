@@ -5,14 +5,28 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:isolate_kit/isolate_kit.dart';
 
+/// A wrapper around a single [Isolate] that functions as a worker within an [IsolatePool].
+///
+/// It handles task dispatching, progress monitoring, and cancellation for a single background isolate.
 class PoolWorker {
+  /// Unique identifier for the worker within the pool.
   final int workerId;
+
+  /// The registry containing task definitions that this worker can execute.
   final IsolateTaskRegistry taskRegistry;
+
+  /// A name used for logging and debugging.
   final String debugName;
+
   Isolate? _isolate;
   SendPort? sendPort;
+
+  /// Number of tasks currently being processed by this worker.
   int activeTasks = 0;
+
+  /// Total number of tasks completed by this worker since its creation.
   int totalCompleted = 0;
+
   final Map<String, SendPort> _cancelPorts = {};
   DateTime? _lastUsed;
 
@@ -20,12 +34,14 @@ class PoolWorker {
   bool _isInitializing = false;
   Completer<void>? _initCompleter;
 
+  /// Creates a [PoolWorker] with the given [workerId] and [taskRegistry].
   PoolWorker({
     required this.workerId,
     required this.taskRegistry,
     required this.debugName,
   });
 
+  /// Spawns the worker's isolate and establishes communication.
   Future<void> init() async {
     if (_isInitializing) return _initCompleter?.future;
 
@@ -58,13 +74,21 @@ class PoolWorker {
     }
   }
 
-  /// Ensure Isolate is ready to use before submitting the assignment.
+  /// Ensures the worker is initialized and ready to process tasks.
   Future<void> _ensureReady() async {
     if (_isolate == null || sendPort == null) {
       await init();
     }
   }
 
+  /// Executes a task on the worker's isolate.
+  ///
+  /// Parameters:
+  /// - [taskId]: Unique identifier for the task.
+  /// - [task]: The task instance to run.
+  /// - [timeout]: Maximum execution time.
+  /// - [onProgress]: Progress update callback.
+  /// - [token]: Cancellation token.
   Future<T> runTask<T>(
     String taskId,
     IsolateTask task, {
@@ -187,6 +211,7 @@ class PoolWorker {
     }
   }
 
+  /// Shuts down the worker's isolate and releases all resources.
   void dispose() {
     try {
       _isolate?.kill(priority: Isolate.immediate);
@@ -197,6 +222,7 @@ class PoolWorker {
     debugPrint('[$debugName] 🧹 Worker disposed');
   }
 
+  /// Returns a status summary for this worker.
   Map<String, dynamic> getStatus() => {
         'workerId': workerId,
         'activeTasks': activeTasks,
@@ -205,8 +231,14 @@ class PoolWorker {
         'isAlive': _isolate != null,
       };
 
+  /// The entry point for the isolate worker.
   static void workerEntry(IsolateInitData init) => isolateWorker(init);
 
+  /// The main loop for the worker isolate.
+  ///
+  /// This function runs entirely within the background isolate. It listens for
+  /// incoming tasks, executes them using the registered factories, and sends
+  /// results back to the main isolate.
   static void isolateWorker(IsolateInitData init) {
     final mainPort = ReceivePort();
     init.sendPort.send(mainPort.sendPort);
