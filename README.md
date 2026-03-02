@@ -1,21 +1,21 @@
-# IsolateKit 🚀 
+# Isolate Kit 🚀
 
-A powerful and easy-to-use Flutter package for running heavy tasks in the background using Dart Isolates with support for cancellation, progress tracking, task prioritization, and pooling.
+A powerful and production-ready Flutter package for managing background tasks using Dart Isolates. It provides a robust architecture for running heavy computations with full support for cancellation, real-time progress tracking, task prioritization, and intelligent isolate pooling.
 
 [![pub version](https://img.shields.io/pub/v/isolate_kit.svg)](https://pub.dev/packages/isolate_kit)
 
 ## ✨ Key Features
 
-- **🔄 Background Processing**: Run heavy tasks without blocking the UI thread
-- **⚡ Isolate Pooling**: Manage multiple isolates for optimal performance
-- **🎯 Task Priority**: Control task execution priority (realtime, critical, high, normal, low)
-- **📊 Progress Tracking**: Monitor task progress in real-time
-- **🚫 Cancellation Support**: Cancel tasks at any time with CancellationToken
-- **⏱️ Timeout Handling**: Automatic timeout for long-running tasks
-- **🔥 Warmup Mode**: Pre-initialize isolates to reduce latency
-- **♻️ Auto Resource Management**: Automatically dispose isolates when idle
-- **📱 Lifecycle Aware**: Responsive to application lifecycle changes
-- **🎨 Type-Safe**: Fully type-safe with generic support
+- **🔄 Efficient Backgrounding**: Move heavy logic (JSON parsing, image processing, crypto) off the UI thread effortlessly.
+- **⚡ Intelligent Pooling**: Scale your app with an Isolate Pool that automatically balances load across multiple workers.
+- **🎯 Smart Prioritization**: Use `TaskPriority` to ensure critical UI-blocking tasks run before background syncs.
+- **📊 Real-time Progress**: Built-in `sendProgress` callback to update your UI with percentages and custom messages.
+- **🚫 True Cancellation**: Stop tasks mid-execution using `CancellationToken` to save CPU and battery.
+- **⏱️ Robust Timeout**: Prevent "zombie" tasks with automatic timeout handling and isolate recovery.
+- **🔥 Warmup Support**: Eliminate first-run latency by pre-warming isolates or pools.
+- **♻️ Auto Resource Management**: Automatically dispose isolates when idle.
+- **📱 Lifecycle Aware**: Responsive to application lifecycle changes (disposes on detach, pauses on idle).
+- **🎨 Type-Safe & Generic**: Fully typed API for both commands and results.
 
 ## 📦 Installation
 
@@ -23,202 +23,102 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  isolate_kit: ^1.0.0
+  isolate_kit: ^1.0.1
 ```
 
 ## 🚀 Quick Start
 
-### 1. Create a Task Class
+### 1. Define Your Task
+
+Extend `IsolateTask<TCommand, TResult>` to encapsulate your logic.
 
 ```dart
-class HeavyComputationTask extends IsolateTask<Map<String, dynamic>, int> {
-  final Map<String, dynamic> _payload;
-
-  HeavyComputationTask(this._payload);
-
-  @override
-  Map<String, dynamic> get command => _payload;
+class MyComputeTask extends IsolateTask<int, int> {
+  final int iterations;
+  MyComputeTask(this.iterations);
 
   @override
-  Map<String, dynamic> get payload => _payload;
+  int get command => iterations;
 
   @override
-  int get priority => TaskPriority.high;
+  Map<String, dynamic> get payload => {'count': iterations};
 
   @override
   Future<int> execute({
     void Function(TaskProgress)? sendProgress,
     CancellationToken? cancellationToken,
   }) async {
-    final iterations = _payload['iterations'] as int;
-    int result = 0;
-
+    int sum = 0;
     for (int i = 0; i < iterations; i++) {
-      // Check for cancellation
+      // 1. Always check for cancellation in loops
       cancellationToken?.throwIfCancelled();
 
-      // Heavy computation
-      result += i * 2;
+      sum += i;
 
-      // Report progress
+      // 2. Report progress
       if (i % 100 == 0) {
         sendProgress?.call(TaskProgress(
           percentage: i / iterations,
-          message: 'Processing $i/$iterations',
+          message: 'Calculating $i/$iterations...',
         ));
       }
     }
-
-    return result;
+    return sum;
   }
 }
 ```
 
-### 2. Register the Task
+### 2. Setup & Registration
+
+Register your tasks in the `IsolateTaskRegistry` so the worker isolate knows how to recreate them.
 
 ```dart
-final registry = IsolateTaskRegistry();
+final registry = IsolateTaskRegistry()
+  ..register<MyComputeTask>(
+    'MyComputeTask',
+    (payload, _) => MyComputeTask(payload['count']),
+  );
 
-registry.register<HeavyComputationTask>(
-  'HeavyComputationTask',
-  (payload, transferables) => HeavyComputationTask(payload),
-);
-```
-
-### 3. Initialize IsolateKit
-
-```dart
 final isolateKit = IsolateKit.instance(
-  name: 'main',
+  name: 'main_worker',
   taskRegistry: registry,
-  maxConcurrentTasks: 3,
   usePool: true,
-  poolSize: 2,
+  poolSize: 2, // Dual-worker pool
 );
 
 // Optional: Warmup for better performance
 await isolateKit.warmup();
 ```
 
-### 4. Run a Task
+### 3. Run and Monitor
+
+Use `runTask` to get a `TaskHandle`.
 
 ```dart
-final task = HeavyComputationTask({'iterations': 10000});
-
 final handle = isolateKit.runTask(
-  task,
-  timeout: Duration(seconds: 30),
-  onProgress: (progress) {
-    print('Progress: ${progress.percentage * 100}% - ${progress.message}');
-  },
+  MyComputeTask(1000000),
+  onProgress: (p) => print('Progress: ${(p.percentage * 100).toStringAsFixed(1)}%'),
 );
 
 try {
   final result = await handle.future;
   print('Result: $result');
 } on TaskCancelledException {
-  print('Task cancelled');
-} on TaskTimeoutException {
-  print('Task timeout');
-} catch (e) {
-  print('Error: $e');
-}
-```
-
-## 📚 Usage Examples
-
-### Task with Progress Tracking
-
-```dart
-class ImageProcessingTask extends IsolateTask<String, Uint8List> {
-  final String imagePath;
-
-  ImageProcessingTask(this.imagePath);
-
-  @override
-  String get command => imagePath;
-
-  @override
-  Map<String, dynamic> get payload => {'path': imagePath};
-
-  @override
-  Future<Uint8List> execute({
-    void Function(TaskProgress)? sendProgress,
-    CancellationToken? cancellationToken,
-  }) async {
-    sendProgress?.call(TaskProgress(
-      percentage: 0.0,
-      message: 'Loading image...',
-    ));
-
-    // Load image
-    final bytes = await loadImage(imagePath);
-    
-    sendProgress?.call(TaskProgress(
-      percentage: 0.5,
-      message: 'Processing...',
-    ));
-
-    // Process image
-    final processed = await processImage(bytes);
-    
-    sendProgress?.call(TaskProgress(
-      percentage: 1.0,
-      message: 'Complete',
-    ));
-
-    return processed;
-  }
-}
-```
-
-### Task with Priority
-
-```dart
-class RealtimeTask extends IsolateTask<dynamic, String> {
-  @override
-  int get priority => TaskPriority.realtime; // Highest priority
-  
-  // ... implementation
-}
-
-class BackgroundTask extends IsolateTask<dynamic, String> {
-  @override
-  int get priority => TaskPriority.low; // Lowest priority
-  
-  // ... implementation
-}
-```
-
-### Task Cancellation
-
-```dart
-final handle = isolateKit.runTask(myTask);
-
-// Cancel after 5 seconds
-Future.delayed(Duration(seconds: 5), () {
-  handle.cancel();
-});
-
-try {
-  await handle.future;
-} on TaskCancelledException {
   print('Task was cancelled');
+} on TaskTimeoutException {
+  print('Task timed out');
 }
 ```
 
-### Multiple Tasks with Pool
+## 📚 Advanced Usage
+
+### Isolate Pooling vs. Single Isolate
+
+- **Single Isolate (`usePool: false`)**: Best for occasional tasks. Uses less memory.
+- **Isolate Pool (`usePool: true`)**: Best for high-frequency tasks or multiple parallel operations. It automatically distributes tasks to the least busy worker.
 
 ```dart
-final isolateKit = IsolateKit.instance(
-  name: 'pool',
-  taskRegistry: registry,
-  usePool: true,
-  poolSize: 4, // 4 isolates in the pool
-  maxConcurrentTasks: 8,
-);
-
-// Run multiple tasks in parallel
+// Run multiple tasks in parallel with a pool
 final handles = [
   isolateKit.runTask(task1),
   isolateKit.runTask(task2),
@@ -231,120 +131,129 @@ final results = await Future.wait(
 );
 ```
 
-## 🎯 Task Priority Levels
+### Task Priority
+
+`IsolateKit` uses a priority queue. High-priority tasks will "jump" ahead of low-priority ones in the queue.
 
 ```dart
-TaskPriority.realtime  // 20 - For extremely urgent tasks
-TaskPriority.critical  // 15 - Important tasks that must be processed immediately
-TaskPriority.high      // 10 - High priority tasks
-TaskPriority.normal    // 5  - Default priority
-TaskPriority.low       // 0  - Background tasks that can be deferred
-```
-
-## ⚙️ Configuration
-
-```dart
-IsolateKit.instance(
-  name: 'myInstance',
-  taskRegistry: registry,
-  
-  // Performance
-  maxConcurrentTasks: 3,        // Maximum tasks running simultaneously
-  usePool: true,                 // Use isolate pool
-  poolSize: 2,                   // Number of isolates in the pool
-  
-  // Resource Management
-  idleTimeout: Duration(minutes: 5),        // Auto dispose when idle
-  idleCheckInterval: Duration(minutes: 1),  // Idle check interval
-  
-  // Debugging
-  debugName: 'MyIsolateKit',
-);
-```
-
-## 📊 Monitoring & Status
-
-```dart
-// Instance status
-final status = isolateKit.getStatus();
-print('Active tasks: ${status['activeTasks']}');
-print('Queued tasks: ${status['queuedTasks']}');
-print('Total completed: ${status['totalCompleted']}');
-
-// All instances status
-final allStatus = IsolateKit.getAllStatus();
-print('Total instances: ${allStatus['totalInstances']}');
-```
-
-## 🛠️ Advanced Features
-
-### Custom Transferables (Zero-Copy)
-
-```dart
-class DataTransferTask extends IsolateTask<Uint8List, Uint8List> {
-  final Uint8List data;
-
+class CriticalTask extends IsolateTask<dynamic, String> {
   @override
-  List<TransferableTypedData>? get transferables => [
-    TransferableTypedData.fromList([data])
-  ];
-  
-  // ... implementation
+  int get priority => TaskPriority.critical; // Will be executed first
 }
+
+class BackgroundSyncTask extends IsolateTask<dynamic, String> {
+  @override
+  int get priority => TaskPriority.low; // Deferred until others finish
+}
+```
+
+| Priority | Value | Use Case |
+|----------|-------|----------|
+| `TaskPriority.realtime` | 20 | Extremely urgent, time-sensitive tasks |
+| `TaskPriority.critical` | 15 | Must be processed immediately |
+| `TaskPriority.high` | 10 | Important but not blocking |
+| `TaskPriority.normal` | 5 | Default priority |
+| `TaskPriority.low` | 0 | Background tasks that can be deferred |
+
+### Task Cancellation
+
+```dart
+final handle = isolateKit.runTask(myTask);
+
+// Cancel after 5 seconds
+Future.delayed(Duration(seconds: 5), () => handle.cancel());
+
+try {
+  final result = await handle.future;
+} on TaskCancelledException {
+  print('Task was cancelled');
+}
+```
+
+### Global Cancellation
+
+Need to stop everything? Use `cancelAll()`.
+
+```dart
+await isolateKit.cancelAll();
 ```
 
 ### Combine Cancellation Tokens
 
 ```dart
-final token1 = CancellationToken();
-final token2 = CancellationToken();
+final userToken = CancellationToken();
+final timeoutToken = CancellationToken();
 
-final combined = CancellationToken.combine([token1, token2]);
 // Task will be cancelled if ANY token is cancelled
+final combined = CancellationToken.combine([userToken, timeoutToken]);
 ```
 
-### Task Metadata
+### Real-time Progress Tracking
 
 ```dart
-class MyTask extends IsolateTask<dynamic, dynamic> {
+class ImageProcessingTask extends IsolateTask<String, Uint8List> {
   @override
-  Duration? get estimatedDuration => Duration(seconds: 10);
-  
-  @override
-  Map<String, dynamic> get metadata => {
-    'version': '1.0',
-    'author': 'Me',
-  };
+  Future<Uint8List> execute({
+    void Function(TaskProgress)? sendProgress,
+    CancellationToken? cancellationToken,
+  }) async {
+    sendProgress?.call(TaskProgress(percentage: 0.0, message: 'Loading image...'));
+    final bytes = await loadImage();
+
+    sendProgress?.call(TaskProgress(percentage: 0.5, message: 'Applying filters...'));
+    final processed = await processImage(bytes);
+
+    sendProgress?.call(TaskProgress(percentage: 1.0, message: 'Complete!'));
+    return processed;
+  }
 }
 ```
 
-## 🧹 Cleanup
+### Zero-Copy Data Transfer
+
+For very large `Uint8List` data, use `transferables` to avoid memory copying overhead.
 
 ```dart
-// Dispose single instance
-await isolateKit.dispose();
+class DataTransferTask extends IsolateTask<Uint8List, Uint8List> {
+  final Uint8List data;
 
-// Dispose by name
-IsolateKit.disposeInstance('myInstance');
+  DataTransferTask(this.data);
 
-// Dispose all instances
-IsolateKit.disposeAll();
+  @override
+  List<TransferableTypedData>? get transferables => [
+    TransferableTypedData.fromList([data])
+  ];
 
-// Reset instance
-await isolateKit.reset();
+  // ... implementation
+}
 ```
 
-## ⚠️ Best Practices
+## ⚙️ Configuration
 
-1. **Warmup for critical tasks**: Call `warmup()` at app startup for optimal performance
-2. **Use Pool for many tasks**: Set `usePool: true` when frequently running tasks
-3. **Set priority wisely**: Use priorities according to task requirements
-4. **Handle cancellation**: Always check `cancellationToken` in long loops
-5. **Monitor progress**: Use `sendProgress` for long-running tasks
-6. **Set realistic timeouts**: Avoid timeouts that are too short
-7. **Dispose when unused**: Let auto-dispose work or manually dispose
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `maxConcurrentTasks` | `3` | Maximum tasks allowed to run simultaneously. |
+| `usePool` | `false` | Enable/Disable Isolate Pooling. |
+| `poolSize` | `2` | Number of workers in the pool. |
+| `idleTimeout` | `5 min` | Time before an idle isolate is automatically killed. |
+| `idleCheckInterval` | `1 min` | How often to check for idle status. |
+| `debugName` | `'IsolateController'` | Label used in debug logs. |
 
-## 🐛 Error Handling
+## 📊 Monitoring & Status
+
+```dart
+final status = isolateKit.getStatus();
+print('Active tasks:    ${status['activeTasks']}');
+print('Queued tasks:    ${status['queuedTasks']}');
+print('Total completed: ${status['totalCompleted']}');
+print('Pool size:       ${status['poolStatus']?['poolSize']}');
+
+// Monitor all instances at once
+final allStatus = IsolateKit.getAllStatus();
+print('Total instances: ${allStatus['totalInstances']}');
+```
+
+## 🛠️ Error Handling
 
 ```dart
 try {
@@ -352,22 +261,50 @@ try {
 } on TaskCancelledException catch (e) {
   print('Task ${e.taskId} was cancelled');
 } on TaskTimeoutException catch (e) {
-  print('Task ${e.taskId} timed out after ${e.timeout}');
+  print('Task ${e.taskId} timed out after ${e.timeout.inSeconds}s');
 } catch (e, stackTrace) {
-  print('Error: $e');
+  print('Unexpected error: $e');
   print('Stack: $stackTrace');
 }
 ```
 
+## 🧹 Cleanup
+
+```dart
+// Dispose a single instance
+await isolateKit.dispose();
+
+// Dispose by name
+IsolateKit.disposeInstance('main_worker');
+
+// Dispose all instances (e.g., on app exit)
+IsolateKit.disposeAll();
+
+// Reset and reinitialize
+await isolateKit.reset();
+```
+
 ## 📱 Lifecycle Management
 
-IsolateKit automatically handles application lifecycle:
+`IsolateKit` is smart about system resources:
 
-- **App Paused**: Attempts to dispose if no active tasks
-- **App Detached**: Force disposes all resources
-- **App Resumed**: Ready to receive new tasks
+- **App Paused**: Waits 30 seconds, then disposes if no active tasks remain.
+- **App Detached**: Force-disposes all resources immediately.
+- **App Resumed**: Ready to receive new tasks, re-spawns isolates on demand.
+
+## ⚠️ Best Practices
+
+1. **Warmup for critical paths**: Call `warmup()` at app startup to eliminate first-run latency.
+2. **Use Pool for parallel work**: Set `usePool: true` when running multiple concurrent tasks.
+3. **Always check cancellation**: Call `cancellationToken?.throwIfCancelled()` inside long loops.
+4. **Never do heavy work on the UI thread**: Pass only parameters to tasks, generate large data inside `execute()`.
+5. **Set priority wisely**: Reserve `realtime`/`critical` for user-facing operations only.
+6. **Use realistic timeouts**: Too-short timeouts cause unnecessary isolate kills and re-spawns.
+7. **Track progress on long tasks**: Use `sendProgress` so users know the app is working.
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Found a bug or have a feature request? Open an issue or submit a PR!
 
+---
+Built with ❤️ for the Flutter community.

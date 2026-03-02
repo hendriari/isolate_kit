@@ -21,10 +21,25 @@ export 'src/task_progress.dart';
 
 part 'src/queue_task.dart';
 
+/// IsolateKit is a powerful utility for managing background tasks using Dart Isolates.
+/// It supports both single isolate execution and isolate pooling for high-concurrency workloads.
+/// Features include task prioritization, progress reporting, cancellation, and automatic lifecycle management.
 class IsolateKit with WidgetsBindingObserver {
   static final Map<String, IsolateKit> _instances = {};
 
-  /// Get or create named instance (singleton pattern)
+  /// Retrieves a named instance of [IsolateKit] following the singleton pattern.
+  /// If an instance with the given [name] already exists, it is returned.
+  /// Otherwise, a new instance is created and cached.
+  ///
+  /// Parameters:
+  /// - [name]: A unique identifier for this instance.
+  /// - [taskRegistry]: Registry containing task definitions this instance can execute.
+  /// - [debugName]: Name used for logging and debugging purposes.
+  /// - [idleTimeout]: Duration of inactivity after which the isolate/pool is automatically disposed.
+  /// - [idleCheckInterval]: How often to check for idle status.
+  /// - [maxConcurrentTasks]: Maximum number of tasks to run simultaneously.
+  /// - [usePool]: Whether to use an [IsolatePool] instead of a single isolate.
+  /// - [poolSize]: The number of workers in the pool (only used if [usePool] is true).
   factory IsolateKit.instance({
     required String name,
     required IsolateTaskRegistry taskRegistry,
@@ -49,7 +64,8 @@ class IsolateKit with WidgetsBindingObserver {
     );
   }
 
-  /// Create new instance (non-singleton)
+  /// Creates a new, non-cached instance of [IsolateKit].
+  /// Use this when you need an isolated controller that isn't managed globally.
   factory IsolateKit.create({
     required IsolateTaskRegistry taskRegistry,
     String debugName = 'IsolateController',
@@ -70,12 +86,25 @@ class IsolateKit with WidgetsBindingObserver {
     );
   }
 
+  /// The registry containing tasks that this controller can perform.
   final IsolateTaskRegistry taskRegistry;
+
+  /// A name used for identification in logs.
   final String debugName;
+
+  /// Inactivity period before the isolate is automatically shut down.
   final Duration idleTimeout;
+
+  /// Frequency of checks for idle state.
   final Duration idleCheckInterval;
+
+  /// Maximum number of tasks allowed to run concurrently.
   final int maxConcurrentTasks;
+
+  /// If true, uses a pool of multiple isolates to process tasks.
   final bool usePool;
+
+  /// Number of isolate workers when [usePool] is enabled.
   final int poolSize;
 
   Isolate? _isolate;
@@ -158,7 +187,7 @@ class IsolateKit with WidgetsBindingObserver {
 
   // ====================== PUBLIC API ======================
 
-  /// Warmup isolate/pool to avoid first-call latency
+  /// Pre-warms the isolate or pool to eliminate latency on the first task execution.
   Future<void> warmup() async {
     if (_warmedUp) return;
     await init();
@@ -166,7 +195,8 @@ class IsolateKit with WidgetsBindingObserver {
     debugPrint('[$debugName:$_id] 🔥 Warmup complete');
   }
 
-  /// Initialize isolate/pool
+  /// Explicitly initializes the isolate or pool.
+  /// Usually called automatically when running the first task.
   Future<void> init() async => _initLock.synchronized(() async {
         if (_isolate != null || (_pool != null && _pool!.initialized)) return;
         _markUsed();
@@ -208,10 +238,17 @@ class IsolateKit with WidgetsBindingObserver {
         }
       });
 
-  /// Run task with full feature support
+  /// Schedules a task for execution.
+  ///
+  /// Returns a [TaskHandle] which allows tracking progress, getting the result, or cancelling the task.
+  ///
+  /// Parameters:
+  /// - [task]: The [IsolateTask] to be executed.
+  /// - [timeout]: Maximum time allowed for the task to complete.
+  /// - [onProgress]: Optional callback for receiving progress updates.
   TaskHandle<TResult> runTask<TCommand, TResult>(
     IsolateTask<TCommand, TResult> task, {
-    Duration timeout = const Duration(seconds: 30),
+    Duration timeout = const Duration(seconds: 60),
     void Function(TaskProgress)? onProgress,
   }) {
     // If pool is requested but not yet created, start initialization in background
@@ -250,7 +287,6 @@ class IsolateKit with WidgetsBindingObserver {
       while (_activeTasks < maxConcurrentTasks && _queue.isNotEmpty) {
         final qt = _queue.removeFirst();
 
-        // ✅ FIX: Complete cancelled tasks immediately
         if (qt.cancellationToken.isCancelled) {
           if (!qt._done) {
             qt._done = true;
@@ -274,17 +310,14 @@ class IsolateKit with WidgetsBindingObserver {
   }
 
   Future<void> _executeTask(_QueuedTask qt) async {
-    final startTime = DateTime.now();
     debugPrint(
         '[$debugName:$_id] 🚀 Executing task ${qt.taskId} (${qt.task.taskType})');
 
-    // keep reference to onCancel to remove it exactly later
-    VoidCallback? onCancel;
+    final VoidCallback? onCancel;
 
     try {
       _markUsed();
 
-      // Check if already cancelled before starting
       if (qt.cancellationToken.isCancelled) {
         throw TaskCancelledException(qt.taskId);
       }
@@ -292,6 +325,9 @@ class IsolateKit with WidgetsBindingObserver {
       dynamic result;
 
       if (usePool && _pool != null) {
+        onCancel = () {};
+        qt.cancellationToken.addListener(onCancel);
+
         result = await _pool!.runTask(
           qt.taskId,
           qt.task,
@@ -321,6 +357,7 @@ class IsolateKit with WidgetsBindingObserver {
           transferables: qt.task.transferables,
         ));
 
+        // Handshake pembatalan
         final cancelPort = await cp.first.timeout(
           const Duration(seconds: 5),
           onTimeout: () => throw TimeoutException('Cancel handshake timeout'),
@@ -340,10 +377,8 @@ class IsolateKit with WidgetsBindingObserver {
         });
 
         try {
+          // DISINI TIMEOUT TERJADI
           final raw = await rp.first.timeout(qt.timeout);
-          // remove listener once message retrieved
-          qt.cancellationToken.removeListener(onCancel);
-          onCancel = null; // Prevent double removal
 
           if (raw is Map && raw.containsKey('error')) {
             final err = raw['error'].toString();
@@ -353,10 +388,17 @@ class IsolateKit with WidgetsBindingObserver {
             throw Exception(err);
           }
           result = raw;
+        } on TimeoutException {
+          // JIKA NON-POOL TIMEOUT, KITA HARUS BUNUH ISOLATE-NYA
+          debugPrint(
+              '[$debugName:$_id] 🚨 Non-pool isolate timeout. Killing isolate to recover.');
+          _isolate?.kill(priority: Isolate.immediate);
+          _isolate = null;
+          _sendPort = null;
+          throw TaskTimeoutException(qt.taskId, qt.timeout);
         } finally {
-          // Ensure listener is removed
-          if (onCancel != null) {
-            qt.cancellationToken.removeListener(onCancel);
+          if (onCancel case final cb) {
+            qt.cancellationToken.removeListener(cb);
           }
           pp?.close();
           rp.close();
@@ -364,65 +406,53 @@ class IsolateKit with WidgetsBindingObserver {
         }
       }
 
-      // Complete the task successfully
+      // Berhasil
       if (!qt.cancellationToken.isCancelled && !qt.completer.isCompleted) {
         await _queueLock.synchronized(() {
           if (!qt._done) {
             qt._done = true;
-            if (!qt.completer.isCompleted) {
-              qt.completer.complete(result);
-            }
-            // ✅ Increment counter INSIDE the lock
+            qt.completer.complete(result);
             _totalCompleted++;
           }
         });
-
-        final duration = DateTime.now().difference(startTime);
-        debugPrint(
-            '[$debugName:$_id] ✅ Task ${qt.taskId} completed in ${duration.inMilliseconds}ms');
+        debugPrint('[$debugName:$_id] ✅ Task ${qt.taskId} completed');
       }
-    } on TaskCancelledException {
-      await _queueLock.synchronized(() {
-        if (!qt._done) {
-          qt._done = true;
-          if (!qt.completer.isCompleted) {
-            qt.completer.completeError(TaskCancelledException(qt.taskId));
-          }
-        }
-      });
-      debugPrint('[$debugName:$_id] 🚫 Task ${qt.taskId} cancelled');
-    } on TaskTimeoutException catch (e) {
-      await _queueLock.synchronized(() {
-        if (!qt._done) {
-          qt._done = true;
-          if (!qt.completer.isCompleted) {
-            qt.completer.completeError(e);
-          }
-        }
-      });
-      debugPrint('[$debugName:$_id] ⏱️  Task ${qt.taskId} timeout');
     } catch (e, s) {
+      // Penanganan Error (Cancel, Timeout, atau General Error)
       await _queueLock.synchronized(() {
         if (!qt._done) {
           qt._done = true;
-          if (!qt.completer.isCompleted) {
-            qt.completer.completeError(e, s);
-          }
+          qt.completer.completeError(e, s);
         }
       });
-      debugPrint('[$debugName:$_id] ❌ Task ${qt.taskId} error: $e');
+
+      if (e is TaskCancelledException) {
+        debugPrint('[$debugName:$_id] 🚫 Task ${qt.taskId} cancelled');
+      } else {
+        debugPrint('[$debugName:$_id] ❌ Task ${qt.taskId} failed: $e');
+      }
+
+      // Jika error handshake timeout (bukan dari rp.first.timeout),
+      // juga sebaiknya reset isolate
+      if (e is TimeoutException &&
+          e.message?.contains('handshake') == true &&
+          !usePool) {
+        _isolate?.kill(priority: Isolate.immediate);
+        _isolate = null;
+        _sendPort = null;
+      }
+
+      debugPrint('[$debugName:$_id] ❌ Task ${qt.taskId} failed: $e');
     } finally {
-      // Clean up INSIDE lock to ensure consistency
       await _queueLock.synchronized(() {
         _activeTasks--;
         _running.remove(qt.taskId);
       });
-
-      // Process queue OUTSIDE lock to avoid deadlock
-      _processQueue();
+      _processQueue(); // Jalankan antrean berikutnya
     }
   }
 
+  /// Returns a future that completes when the controller is initialized and ready to accept tasks.
   Future<void> whenReady() async {
     if (!usePool) {
       await init();
@@ -437,7 +467,7 @@ class IsolateKit with WidgetsBindingObserver {
     }
   }
 
-  /// Cancel all tasks
+  /// Cancels all currently queued and running tasks.
   Future<void> cancelAll() async {
     await _queueLock.synchronized(() {
       debugPrint('[$debugName:$_id] 🚫 Cancelling all tasks...');
@@ -480,7 +510,7 @@ class IsolateKit with WidgetsBindingObserver {
     });
   }
 
-  /// Reset controller (dispose and reinitialize)
+  /// Resets the controller by disposing of the current isolate/pool and re-initializing it.
   Future<void> reset() async {
     debugPrint('[$debugName:$_id] 🔄 Resetting...');
     dispose(force: true);
@@ -489,7 +519,9 @@ class IsolateKit with WidgetsBindingObserver {
     debugPrint('[$debugName:$_id] ✅ Reset complete');
   }
 
-  /// Dispose controller
+  /// Shuts down the controller, kills active isolates, and clears the task queue.
+  ///
+  /// If [force] is false (default), it will skip disposal if there are active tasks.
   Future<void> dispose({bool force = false}) async {
     await _queueLock.synchronized(() {
       if (!force && _activeTasks > 0) {
@@ -542,7 +574,8 @@ class IsolateKit with WidgetsBindingObserver {
     });
   }
 
-  /// Get controller status
+  /// Returns a comprehensive map representing the current state of the controller,
+  /// including active tasks, queue status, and uptime.
   Map<String, dynamic> getStatus() {
     final now = DateTime.now();
     final idle =
@@ -581,13 +614,13 @@ class IsolateKit with WidgetsBindingObserver {
 
   // ====================== STATIC METHODS ======================
 
-  /// Dispose specific instance
+  /// Disposes of a specific named instance.
   static void disposeInstance(String name) {
     final instance = _instances.remove(name);
     instance?.dispose(force: true);
   }
 
-  /// Dispose all instances - avoid concurrent modification
+  /// Disposes of all named instances currently tracked by [IsolateKit].
   static void disposeAll() {
     final instancesToDispose = List<IsolateKit>.from(_instances.values);
     _instances.clear();
@@ -599,10 +632,10 @@ class IsolateKit with WidgetsBindingObserver {
     debugPrint('IsolateController: 🧹 All instances disposed');
   }
 
-  /// Get all instance names
+  /// Lists all registered instance names.
   static List<String> get instanceNames => _instances.keys.toList();
 
-  /// Get all instances status
+  /// Returns a summary of the status of all managed instances.
   static Map<String, dynamic> getAllStatus() {
     return {
       'totalInstances': _instances.length,

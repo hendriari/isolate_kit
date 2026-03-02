@@ -1,3 +1,13 @@
+## [1.0.1]
+
+### Updated :
+
+- Example usage
+
+### Fixed :
+
+- Queue on cancellation token
+
 ## [1.0.0]
 
 ### 🎉 Initial Release
@@ -108,3 +118,9 @@ The first stable release of IsolateKit - a powerful Flutter package for backgrou
 - API documentation for all public classes
 - Best practices guide
 - Error handling patterns
+
+# [1.0.1]
+updated:
+- update example heavy task processing
+- update initial timeout duration
+- update cancel task and then return boolean value
