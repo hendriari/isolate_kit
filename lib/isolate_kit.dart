@@ -288,6 +288,9 @@ class IsolateKit with WidgetsBindingObserver {
       dynamic result;
 
       if (usePool && _pool != null) {
+        onCancel = () {};
+        qt.cancellationToken.addListener(onCancel);
+
         result = await _pool!.runTask(
           qt.taskId,
           qt.task,
@@ -385,6 +388,12 @@ class IsolateKit with WidgetsBindingObserver {
           qt.completer.completeError(e, s);
         }
       });
+
+      if (e is TaskCancelledException) {
+        debugPrint('[$debugName:$_id] 🚫 Task ${qt.taskId} cancelled');
+      } else {
+        debugPrint('[$debugName:$_id] ❌ Task ${qt.taskId} failed: $e');
+      }
 
       // Jika error handshake timeout (bukan dari rp.first.timeout),
       // juga sebaiknya reset isolate

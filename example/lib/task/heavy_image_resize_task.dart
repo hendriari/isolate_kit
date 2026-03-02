@@ -146,6 +146,8 @@ Throughput: $opsPerSec ops/sec
       token?.throwIfCancelled();
 
       for (int x = 0; x < dstW; x++) {
+        token?.throwIfCancelled();
+
         final srcX = x * xRatio;
         final srcY = y * yRatio;
 
@@ -161,6 +163,8 @@ Throughput: $opsPerSec ops/sec
 
         // Interpolate each channel with safe access
         for (int c = 0; c < 4; c++) {
+          token?.throwIfCancelled();
+
           final p11 = _getPixel(x1, y1, c, srcW, srcH);
           final p21 = _getPixel(x2, y1, c, srcW, srcH);
           final p12 = _getPixel(x1, y2, c, srcW, srcH);
@@ -204,6 +208,8 @@ Throughput: $opsPerSec ops/sec
       token?.throwIfCancelled();
 
       for (int x = 0; x < dstW; x++) {
+        token?.throwIfCancelled();
+
         final srcX = x * xRatio;
         final srcY = y * yRatio;
 
@@ -217,11 +223,17 @@ Throughput: $opsPerSec ops/sec
 
         // Process each channel
         for (int c = 0; c < 4; c++) {
+          token?.throwIfCancelled();
+
           double sum = 0;
 
           // 4x4 bicubic kernel
           for (int ky = -1; ky <= 2; ky++) {
+            token?.throwIfCancelled();
+
             for (int kx = -1; kx <= 2; kx++) {
+              token?.throwIfCancelled();
+
               final sx = x1 + kx;
               final sy = y1 + ky;
 
@@ -268,6 +280,8 @@ Throughput: $opsPerSec ops/sec
       token?.throwIfCancelled();
 
       for (int x = 0; x < dstW; x++) {
+        token?.throwIfCancelled();
+
         final srcX = (x + 0.5) * xRatio - 0.5;
         final srcY = (y + 0.5) * yRatio - 0.5;
 
@@ -278,12 +292,18 @@ Throughput: $opsPerSec ops/sec
 
         // Process each channel
         for (int c = 0; c < 4; c++) {
+          token?.throwIfCancelled();
+
           double sum = 0;
           double weightSum = 0;
 
           // 6x6 Lanczos kernel
           for (int ky = -a + 1; ky <= a; ky++) {
+            token?.throwIfCancelled();
+
             for (int kx = -a + 1; kx <= a; kx++) {
+              token?.throwIfCancelled();
+
               final sx = x0 + kx;
               final sy = y0 + ky;
 

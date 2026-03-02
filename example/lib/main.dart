@@ -46,7 +46,7 @@ class _MyHomePageState extends State<MyHomePage> {
   int _activeTaskCount = 0;
   String _status = 'Ready';
   bool _isProcessing = false;
-  TaskHandle? _currentTask;
+  final Map<String, TaskHandle> _activeTasks = {};
 
   @override
   void initState() {
@@ -89,43 +89,61 @@ class _MyHomePageState extends State<MyHomePage> {
       },
     );
 
-    _currentTask = handle;
+    _activeTasks[handle.taskId] = handle;
 
     try {
-      final result = await _currentTask!.future;
+      // ✅ await handle lokal, bukan _currentTask!
+      final result = await handle.future;
       setState(() {
         _result = result.toString();
         _status = '$taskName completed!';
         _progress = 1.0;
       });
     } on TaskCancelledException {
-      setState(() {
-        _status = 'Cancelled';
-        _result = 'Task was cancelled';
-        _isProcessing = false;
-      });
+      debugPrint('🎯 CAUGHT TaskCancelledException for $taskName'); // tambah ini
+      // ✅ setiap task punya catch-nya sendiri sekarang
+      if (mounted) {
+        setState(() {
+          _status = 'Task $taskName cancelled';
+          _result = 'Task was cancelled';
+          _progress = 0.0;
+        });
+      }
     } on TaskTimeoutException {
-      setState(() {
-        _status = 'Timeout!';
-        _result = 'Task timed out';
-        _isProcessing = false;
-      });
+      if (mounted) {
+        setState(() {
+          _status = 'Timeout!';
+          _result = 'Task timed out';
+        });
+      }
     } catch (e) {
-      setState(() {
-        _status = 'Error: $e';
-        _result = 'Error occurred';
-        _isProcessing = false;
-      });
+      if (mounted) {
+        setState(() {
+          _status = 'Error: $e';
+          _result = 'Error occurred';
+        });
+      }
     } finally {
       if (mounted) {
         setState(() {
+          _activeTasks.remove(handle.taskId);
           _activeTaskCount--;
           _isProcessing = _activeTaskCount > 0;
           if (!_isProcessing) {
-            _status = 'All tasks finished!';
+            _progress = 0.0;
+            _status = _activeTaskCount == 0 ? 'All tasks finished!' : _status;
           }
         });
       }
+    }
+  }
+
+  void _cancelTask() async {
+    setState(() {
+      _status = 'process cancellation';
+    });
+    for (final handle in _activeTasks.values.toList()) {
+      await handle.cancel();
     }
   }
 
@@ -202,13 +220,6 @@ class _MyHomePageState extends State<MyHomePage> {
       'use_bigint': true,
     });
     _runTask(task, 'Matrix Fibonacci (Heavy)');
-  }
-
-  void _cancelTask() async {
-    setState(() {
-      _status = 'process cancellation';
-    });
-    await _currentTask?.cancel();
   }
 
   void _showStatus() {

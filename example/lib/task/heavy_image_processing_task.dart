@@ -199,13 +199,19 @@ Pipeline: HDR → Bilateral → Unsharp → Histogram → Gaussian
       token?.throwIfCancelled();
 
       for (int x = halfKernel; x < width - halfKernel; x++) {
+        token?.throwIfCancelled();
+
         final centerIdx = (y * width + x) * 3;
 
         double sumR = 0, sumG = 0, sumB = 0, sumWeight = 0;
 
         // Iterate through kernel
         for (int ky = -halfKernel; ky <= halfKernel; ky++) {
+          token?.throwIfCancelled();
+
           for (int kx = -halfKernel; kx <= halfKernel; kx++) {
+            token?.throwIfCancelled();
+
             final ny = y + ky;
             final nx = x + kx;
 
@@ -291,10 +297,16 @@ Pipeline: HDR → Bilateral → Unsharp → Histogram → Gaussian
     for (int y = 2; y < height - 2; y++) {
       token?.throwIfCancelled();
       for (int x = 2; x < width - 2; x++) {
+        token?.throwIfCancelled();
+
         int sumR = 0, sumG = 0, sumB = 0;
 
         for (int ky = -2; ky <= 2; ky++) {
+          token?.throwIfCancelled();
+
           for (int kx = -2; kx <= 2; kx++) {
+            token?.throwIfCancelled();
+
             final ny = y + ky;
             final nx = x + kx;
 
@@ -349,6 +361,8 @@ Pipeline: HDR → Bilateral → Unsharp → Histogram → Gaussian
       // Build histogram
       final histogram = List<int>.filled(256, 0);
       for (int i = 0; i < width * height; i++) {
+        token?.throwIfCancelled();
+
         final pixelIdx = i * 3 + channel;
         if (pixelIdx < data.length) {
           histogram[data[pixelIdx]]++;

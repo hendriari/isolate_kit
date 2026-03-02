@@ -147,6 +147,10 @@ class PoolWorker {
         },
       );
 
+      if (token.isCancelled) {
+        throw TaskCancelledException(taskId);
+      }
+
       if (result is Map && result.containsKey('error')) {
         final err = result['error'].toString();
         if (err.contains('cancelled')) {
@@ -252,8 +256,10 @@ class PoolWorker {
 
         msg.replyPort.send(result);
       } on TaskCancelledException {
+        debugPrint('🚫 isolateWorker caught cancel: ${msg.taskId}');
         msg.replyPort.send({'error': 'Task ${msg.taskId} cancelled'});
       } catch (e, s) {
+        debugPrint('❌ isolateWorker caught error: $e');
         msg.replyPort.send({
           'error': e.toString(),
           'stack': s.toString(),

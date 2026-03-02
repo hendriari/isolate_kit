@@ -1,3 +1,13 @@
+## [1.0.1]
+
+### Updated :
+
+- Example usage
+
+### Fixed :
+
+- Queue on cancellation token
+
 ## [1.0.0]
 
 ### 🎉 Initial Release

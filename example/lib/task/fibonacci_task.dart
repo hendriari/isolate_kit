@@ -97,6 +97,8 @@ class FibonacciTask extends IsolateTask<Map<String, dynamic>, String> {
 
       // Report progress every 10% of iterations
       if ((iter + 1) % (iterations ~/ 10).clamp(1, iterations) == 0) {
+        cancellationToken?.throwIfCancelled();
+
         final progress = (iter + 1) / iterations;
         final digits = lastResult.toString().length;
         sendProgress?.call(
@@ -134,6 +136,8 @@ class FibonacciTask extends IsolateTask<Map<String, dynamic>, String> {
 
       // Report progress every 10% of iterations
       if ((iter + 1) % (iterations ~/ 10).clamp(1, iterations) == 0) {
+        cancellationToken?.throwIfCancelled();
+
         final progress = (iter + 1) / iterations;
         final percentage = (progress * 100).toStringAsFixed(0);
         sendProgress?.call(
