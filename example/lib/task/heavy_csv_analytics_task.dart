@@ -103,8 +103,11 @@ class HeavyCsvAnalyticsTask extends IsolateTask<String, String> {
 
     stopwatch.stop();
 
-    final elapsedSeconds = (stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(2);
-    final opsPerSec = _formatNumber((totalOps / stopwatch.elapsedMilliseconds * 1000).round());
+    final elapsedSeconds = (stopwatch.elapsedMilliseconds / 1000)
+        .toStringAsFixed(2);
+    final opsPerSec = _formatNumber(
+      (totalOps / stopwatch.elapsedMilliseconds * 1000).round(),
+    );
 
     sendProgress?.call(
       TaskProgress(percentage: 1.0, message: 'Analytics complete!'),
@@ -137,7 +140,8 @@ Clusters: 5 groups identified
         'feature2': baseValue * 0.8 + random.nextGaussian() * 15,
         'feature3': baseValue * 1.2 + random.nextGaussian() * 20,
         'feature4': random.nextDouble() * 50, // Independent
-        'feature5': math.sin(i / 100) * 30 + random.nextGaussian() * 5, // Periodic
+        'feature5':
+            math.sin(i / 100) * 30 + random.nextGaussian() * 5, // Periodic
       });
     }
 
@@ -147,9 +151,9 @@ Clusters: 5 groups identified
   /// Compute comprehensive statistics
   /// Includes: mean, median, std, skewness, kurtosis
   Future<Map<String, Map<String, double>>> _computeStatistics(
-      List<Map<String, double>> data,
-      CancellationToken? token,
-      ) async {
+    List<Map<String, double>> data,
+    CancellationToken? token,
+  ) async {
     final stats = <String, Map<String, double>>{};
     final features = data.first.keys.toList();
 
@@ -163,7 +167,9 @@ Clusters: 5 groups identified
       final mean = values.reduce((a, b) => a + b) / values.length;
 
       // Variance & Std Dev
-      final variance = values.map((x) => math.pow(x - mean, 2)).reduce((a, b) => a + b) / values.length;
+      final variance =
+          values.map((x) => math.pow(x - mean, 2)).reduce((a, b) => a + b) /
+          values.length;
       final stdDev = math.sqrt(variance);
 
       // Median
@@ -172,16 +178,19 @@ Clusters: 5 groups identified
           : values[values.length ~/ 2];
 
       // Skewness (measure of asymmetry)
-      final skewness = values
-          .map((x) => math.pow((x - mean) / stdDev, 3))
-          .reduce((a, b) => a + b) /
+      final skewness =
+          values
+              .map((x) => math.pow((x - mean) / stdDev, 3))
+              .reduce((a, b) => a + b) /
           values.length;
 
       // Kurtosis (measure of tail heaviness)
-      final kurtosis = values
-          .map((x) => math.pow((x - mean) / stdDev, 4))
-          .reduce((a, b) => a + b) /
-          values.length - 3;
+      final kurtosis =
+          values
+                  .map((x) => math.pow((x - mean) / stdDev, 4))
+                  .reduce((a, b) => a + b) /
+              values.length -
+          3;
 
       stats[feature] = {
         'mean': mean,
@@ -200,9 +209,9 @@ Clusters: 5 groups identified
   /// Compute correlation matrix between features
   /// O(n × m²) where m = number of features
   Future<Map<String, double>> _computeCorrelations(
-      List<Map<String, double>> data,
-      CancellationToken? token,
-      ) async {
+    List<Map<String, double>> data,
+    CancellationToken? token,
+  ) async {
     final features = data.first.keys.toList();
     final correlations = <String, double>{};
 
@@ -243,17 +252,17 @@ Clusters: 5 groups identified
   /// K-means clustering
   /// Expensive iterative algorithm: O(k × n × iterations)
   Future<Map<String, dynamic>> _kMeansClustering(
-      List<Map<String, double>> data,
-      int k,
-      CancellationToken? token,
-      ) async {
+    List<Map<String, double>> data,
+    int k,
+    CancellationToken? token,
+  ) async {
     final features = data.first.keys.toList();
     final random = math.Random(42);
 
     // Initialize centroids randomly
     var centroids = List.generate(
       k,
-          (_) => features.map((f) => random.nextDouble() * 100).toList(),
+      (_) => features.map((f) => random.nextDouble() * 100).toList(),
     );
 
     final maxIterations = 20;
@@ -289,7 +298,8 @@ Clusters: 5 groups identified
 
         final centroid = <double>[];
         for (int f = 0; f < features.length; f++) {
-          final mean = cluster.map((p) => p[f]).reduce((a, b) => a + b) / cluster.length;
+          final mean =
+              cluster.map((p) => p[f]).reduce((a, b) => a + b) / cluster.length;
           centroid.add(mean);
         }
         newCentroids.add(centroid);
@@ -314,23 +324,21 @@ Clusters: 5 groups identified
       }
 
       if (clusterSizes.length <= nearestCluster) {
-        clusterSizes.addAll(List.filled(nearestCluster - clusterSizes.length + 1, 0));
+        clusterSizes.addAll(
+          List.filled(nearestCluster - clusterSizes.length + 1, 0),
+        );
       }
       clusterSizes[nearestCluster]++;
     }
 
-    return {
-      'k': k,
-      'iterations': maxIterations,
-      'cluster_sizes': clusterSizes,
-    };
+    return {'k': k, 'iterations': maxIterations, 'cluster_sizes': clusterSizes};
   }
 
   /// Detect outliers using IQR method
   Future<Map<String, dynamic>> _detectOutliers(
-      List<Map<String, double>> data,
-      CancellationToken? token,
-      ) async {
+    List<Map<String, double>> data,
+    CancellationToken? token,
+  ) async {
     final features = data.first.keys.toList();
     int outlierCount = 0;
 
@@ -346,20 +354,23 @@ Clusters: 5 groups identified
       final lowerBound = q1 - 1.5 * iqr;
       final upperBound = q3 + 1.5 * iqr;
 
-      outlierCount += values.where((v) => v < lowerBound || v > upperBound).length;
+      outlierCount += values
+          .where((v) => v < lowerBound || v > upperBound)
+          .length;
     }
 
     return {
       'count': outlierCount,
-      'percentage': (outlierCount / (data.length * features.length) * 100).toStringAsFixed(2),
+      'percentage': (outlierCount / (data.length * features.length) * 100)
+          .toStringAsFixed(2),
     };
   }
 
   /// Pattern recognition using autocorrelation
   Future<Map<String, dynamic>> _recognizePatterns(
-      List<Map<String, double>> data,
-      CancellationToken? token,
-      ) async {
+    List<Map<String, double>> data,
+    CancellationToken? token,
+  ) async {
     final features = data.first.keys.toList();
     final patterns = <String, bool>{};
 

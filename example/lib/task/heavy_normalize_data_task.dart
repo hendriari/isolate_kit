@@ -77,7 +77,8 @@ class HeavyNormalizeDataTask extends IsolateTask<Map<String, dynamic>, String> {
           sendProgress?.call(
             TaskProgress(
               percentage: totalProgress,
-              message: 'Iteration ${iter + 1}/$iterations | Transform ${t + 1}/$transformations',
+              message:
+                  'Iteration ${iter + 1}/$iterations | Transform ${t + 1}/$transformations',
             ),
           );
         }
@@ -86,8 +87,11 @@ class HeavyNormalizeDataTask extends IsolateTask<Map<String, dynamic>, String> {
 
     stopwatch.stop();
 
-    final elapsedSeconds = (stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(2);
-    final opsPerSec = _formatNumber((totalOps / stopwatch.elapsedMilliseconds * 1000).round());
+    final elapsedSeconds = (stopwatch.elapsedMilliseconds / 1000)
+        .toStringAsFixed(2);
+    final opsPerSec = _formatNumber(
+      (totalOps / stopwatch.elapsedMilliseconds * 1000).round(),
+    );
 
     sendProgress?.call(
       TaskProgress(
@@ -130,7 +134,9 @@ Throughput: $opsPerSec ops/sec
   /// Transforms data to mean=0, std=1
   List<double> _standardNormalization(List<double> data) {
     final mean = data.reduce((a, b) => a + b) / data.length;
-    final variance = data.map((x) => math.pow(x - mean, 2)).reduce((a, b) => a + b) / data.length;
+    final variance =
+        data.map((x) => math.pow(x - mean, 2)).reduce((a, b) => a + b) /
+        data.length;
     final stdDev = math.sqrt(variance);
 
     return data.map((x) => (x - mean) / (stdDev + 1e-8)).toList();
@@ -153,7 +159,9 @@ Throughput: $opsPerSec ops/sec
   List<double> _powerTransform(List<double> data, double lambda) {
     // Shift data to be positive
     final minVal = data.reduce(math.min);
-    final shifted = minVal <= 0 ? data.map((x) => x + (minVal.abs() + 1)).toList() : data;
+    final shifted = minVal <= 0
+        ? data.map((x) => x + (minVal.abs() + 1)).toList()
+        : data;
 
     if (lambda.abs() < 1e-8) {
       // lambda ≈ 0: use log transform

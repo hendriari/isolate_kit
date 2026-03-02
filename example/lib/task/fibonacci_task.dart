@@ -25,10 +25,7 @@ class FibonacciTask extends IsolateTask<Map<String, dynamic>, String> {
     final useBigInt = _payload['use_bigint'] as bool? ?? false;
 
     sendProgress?.call(
-      TaskProgress(
-        percentage: 0.0,
-        message: 'Starting Fibonacci benchmark...',
-      ),
+      TaskProgress(percentage: 0.0, message: 'Starting Fibonacci benchmark...'),
     );
 
     final stopwatch = Stopwatch()..start();
@@ -41,7 +38,7 @@ class FibonacciTask extends IsolateTask<Map<String, dynamic>, String> {
         iterations,
         sendProgress,
         cancellationToken,
-            (ops) => totalOperations = ops,
+        (ops) => totalOperations = ops,
       );
     } else {
       lastResult = await _computeWithModulo(
@@ -49,15 +46,18 @@ class FibonacciTask extends IsolateTask<Map<String, dynamic>, String> {
         iterations,
         sendProgress,
         cancellationToken,
-            (ops) => totalOperations = ops,
+        (ops) => totalOperations = ops,
       );
     }
 
     stopwatch.stop();
 
     // Format results for better readability
-    final elapsedSeconds = (stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(2);
-    final opsPerSec = _formatNumber((totalOperations / stopwatch.elapsedMilliseconds * 1000).round());
+    final elapsedSeconds = (stopwatch.elapsedMilliseconds / 1000)
+        .toStringAsFixed(2);
+    final opsPerSec = _formatNumber(
+      (totalOperations / stopwatch.elapsedMilliseconds * 1000).round(),
+    );
 
     sendProgress?.call(
       TaskProgress(
@@ -79,12 +79,12 @@ class FibonacciTask extends IsolateTask<Map<String, dynamic>, String> {
   /// Compute Fibonacci using BigInt for arbitrary precision
   /// Slower but accurate for very large numbers
   Future<BigInt> _computeWithBigInt(
-      int n,
-      int iterations,
-      void Function(TaskProgress)? sendProgress,
-      CancellationToken? cancellationToken,
-      void Function(int) setOps,
-      ) async {
+    int n,
+    int iterations,
+    void Function(TaskProgress)? sendProgress,
+    CancellationToken? cancellationToken,
+    void Function(int) setOps,
+  ) async {
     BigInt lastResult = BigInt.zero;
     int totalOps = 0;
 
@@ -104,7 +104,8 @@ class FibonacciTask extends IsolateTask<Map<String, dynamic>, String> {
         sendProgress?.call(
           TaskProgress(
             percentage: progress,
-            message: 'BigInt [${iter + 1}/$iterations] → ${_formatNumber(digits)} digits',
+            message:
+                'BigInt [${iter + 1}/$iterations] → ${_formatNumber(digits)} digits',
           ),
         );
       }
@@ -117,12 +118,12 @@ class FibonacciTask extends IsolateTask<Map<String, dynamic>, String> {
   /// Compute Fibonacci using modulo arithmetic
   /// Fast with limited but consistent results (prevents overflow)
   Future<int> _computeWithModulo(
-      int n,
-      int iterations,
-      void Function(TaskProgress)? sendProgress,
-      CancellationToken? cancellationToken,
-      void Function(int) setOps,
-      ) async {
+    int n,
+    int iterations,
+    void Function(TaskProgress)? sendProgress,
+    CancellationToken? cancellationToken,
+    void Function(int) setOps,
+  ) async {
     const int mod = 1000000007; // Prime modulo to prevent overflow
     int lastResult = 0;
     int totalOps = 0;
@@ -268,13 +269,13 @@ class FibonacciTask extends IsolateTask<Map<String, dynamic>, String> {
 
   /// Generate a human-readable summary of the benchmark results
   String _generateSummary(
-      int n,
-      int iterations,
-      bool useBigInt,
-      dynamic result,
-      int elapsedMs,
-      int totalOps,
-      ) {
+    int n,
+    int iterations,
+    bool useBigInt,
+    dynamic result,
+    int elapsedMs,
+    int totalOps,
+  ) {
     final mode = useBigInt ? 'BigInt' : 'Modulo';
     final time = (elapsedMs / 1000).toStringAsFixed(2);
     final ops = _formatNumber((totalOps / elapsedMs * 1000).round());

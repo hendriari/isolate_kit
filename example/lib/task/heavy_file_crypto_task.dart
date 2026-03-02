@@ -32,10 +32,14 @@ class HeavyFileCryptoTask extends IsolateTask<Uint8List, String> {
   }) async {
     final chunkSize = _payload['chunkSize'] as int? ?? 4 * 1024 * 1024; // 4MB
     final iterations = _payload['iterations'] as int? ?? 1000;
-    final algorithms = _payload['algorithms'] as List<String>? ?? ['sha256', 'sha512', 'hmac'];
+    final algorithms =
+        _payload['algorithms'] as List<String>? ?? ['sha256', 'sha512', 'hmac'];
 
     sendProgress?.call(
-      TaskProgress(percentage: 0.0, message: 'Starting cryptographic processing...'),
+      TaskProgress(
+        percentage: 0.0,
+        message: 'Starting cryptographic processing...',
+      ),
     );
 
     final stopwatch = Stopwatch()..start();
@@ -51,7 +55,7 @@ class HeavyFileCryptoTask extends IsolateTask<Uint8List, String> {
       chunkSize,
       sendProgress,
       cancellationToken,
-          (ops) => totalOps += ops,
+      (ops) => totalOps += ops,
     );
     results['merkle_root'] = merkleRoot;
 
@@ -72,9 +76,9 @@ class HeavyFileCryptoTask extends IsolateTask<Uint8List, String> {
           final hash = await _computeChunkedHash(
             _fileData,
             chunkSize,
-                (data) => sha256.convert(data),
+            (data) => sha256.convert(data),
             cancellationToken,
-                (ops) => totalOps += ops,
+            (ops) => totalOps += ops,
           );
           results['sha256'] = hash;
           break;
@@ -83,9 +87,9 @@ class HeavyFileCryptoTask extends IsolateTask<Uint8List, String> {
           final hash = await _computeChunkedHash(
             _fileData,
             chunkSize,
-                (data) => sha512.convert(data),
+            (data) => sha512.convert(data),
             cancellationToken,
-                (ops) => totalOps += ops,
+            (ops) => totalOps += ops,
           );
           results['sha512'] = hash;
           break;
@@ -97,7 +101,7 @@ class HeavyFileCryptoTask extends IsolateTask<Uint8List, String> {
             hmacKey,
             chunkSize,
             cancellationToken,
-                (ops) => totalOps += ops,
+            (ops) => totalOps += ops,
           );
           results['hmac_sha256'] = hash;
           break;
@@ -118,7 +122,7 @@ class HeavyFileCryptoTask extends IsolateTask<Uint8List, String> {
       iterations,
       sendProgress,
       cancellationToken,
-          (ops) => totalOps += ops,
+      (ops) => totalOps += ops,
     );
     results['derived_key'] = derivedKey;
 
@@ -132,12 +136,22 @@ class HeavyFileCryptoTask extends IsolateTask<Uint8List, String> {
 
     stopwatch.stop();
 
-    final elapsedSeconds = (stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(2);
-    final opsPerSec = _formatNumber((totalOps / stopwatch.elapsedMilliseconds * 1000).round());
-    final mbPerSec = (_fileData.length / (1024 * 1024) / (stopwatch.elapsedMilliseconds / 1000)).toStringAsFixed(2);
+    final elapsedSeconds = (stopwatch.elapsedMilliseconds / 1000)
+        .toStringAsFixed(2);
+    final opsPerSec = _formatNumber(
+      (totalOps / stopwatch.elapsedMilliseconds * 1000).round(),
+    );
+    final mbPerSec =
+        (_fileData.length /
+                (1024 * 1024) /
+                (stopwatch.elapsedMilliseconds / 1000))
+            .toStringAsFixed(2);
 
     sendProgress?.call(
-      TaskProgress(percentage: 1.0, message: 'Cryptographic processing complete!'),
+      TaskProgress(
+        percentage: 1.0,
+        message: 'Cryptographic processing complete!',
+      ),
     );
 
     return '''
@@ -162,12 +176,12 @@ Checksum: ${results['checksum']}
   /// Compute Merkle tree hash (binary tree of hashes)
   /// Very useful for verifying large files efficiently
   Future<String> _computeMerkleTree(
-      Uint8List data,
-      int chunkSize,
-      void Function(TaskProgress)? sendProgress,
-      CancellationToken? token,
-      void Function(int) addOps,
-      ) async {
+    Uint8List data,
+    int chunkSize,
+    void Function(TaskProgress)? sendProgress,
+    CancellationToken? token,
+    void Function(int) addOps,
+  ) async {
     final totalChunks = (data.length / chunkSize).ceil();
     var hashes = <List<int>>[];
 
@@ -204,18 +218,20 @@ Checksum: ${results['checksum']}
       hashes = newLevel;
     }
 
-    return hashes.first.map((b) => b.toRadixString(16).padLeft(2, '0')).join('');
+    return hashes.first
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join('');
   }
 
   /// Compute hash with chunked processing
   /// More memory efficient and allows progress reporting
   Future<String> _computeChunkedHash(
-      Uint8List data,
-      int chunkSize,
-      Digest Function(List<int>) hashFunction,
-      CancellationToken? token,
-      void Function(int) addOps,
-      ) async {
+    Uint8List data,
+    int chunkSize,
+    Digest Function(List<int>) hashFunction,
+    CancellationToken? token,
+    void Function(int) addOps,
+  ) async {
     final totalChunks = (data.length / chunkSize).ceil();
     final chunks = <List<int>>[];
 
@@ -236,12 +252,12 @@ Checksum: ${results['checksum']}
 
   /// Compute HMAC (keyed hash)
   Future<String> _computeHMAC(
-      Uint8List data,
-      List<int> key,
-      int chunkSize,
-      CancellationToken? token,
-      void Function(int) addOps,
-      ) async {
+    Uint8List data,
+    List<int> key,
+    int chunkSize,
+    CancellationToken? token,
+    void Function(int) addOps,
+  ) async {
     final hmacSha256 = Hmac(sha256, key);
     final digest = hmacSha256.convert(data);
 
@@ -253,16 +269,14 @@ Checksum: ${results['checksum']}
   /// PBKDF2-like key derivation
   /// EXTREMELY EXPENSIVE: Iterates hash thousands of times
   Future<String> _pbkdf2Like(
-      Uint8List data,
-      int iterations,
-      void Function(TaskProgress)? sendProgress,
-      CancellationToken? token,
-      void Function(int) addOps,
-      ) async {
+    Uint8List data,
+    int iterations,
+    void Function(TaskProgress)? sendProgress,
+    CancellationToken? token,
+    void Function(int) addOps,
+  ) async {
     // Use a sample of the data as "password" for speed
-    final password = data.length > 1024
-        ? data.sublist(0, 1024)
-        : data;
+    final password = data.length > 1024 ? data.sublist(0, 1024) : data;
 
     var derived = sha256.convert(password).bytes;
 
@@ -289,9 +303,9 @@ Checksum: ${results['checksum']}
 
   /// Simple checksum for integrity verification
   Future<String> _computeChecksum(
-      Uint8List data,
-      CancellationToken? token,
-      ) async {
+    Uint8List data,
+    CancellationToken? token,
+  ) async {
     int checksum = 0;
     for (int i = 0; i < data.length; i++) {
       token?.throwIfCancelled();

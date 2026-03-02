@@ -58,7 +58,7 @@ class HeavyImageProcessingTask extends IsolateTask<Uint8List, String> {
         width,
         height,
         cancellationToken,
-            (ops) => totalOps += ops,
+        (ops) => totalOps += ops,
       );
 
       // Step 2: Bilateral filter (edge-preserving blur)
@@ -73,7 +73,7 @@ class HeavyImageProcessingTask extends IsolateTask<Uint8List, String> {
         width,
         height,
         cancellationToken,
-            (ops) => totalOps += ops,
+        (ops) => totalOps += ops,
       );
 
       // Step 3: Unsharp masking for edge enhancement
@@ -88,14 +88,15 @@ class HeavyImageProcessingTask extends IsolateTask<Uint8List, String> {
         width,
         height,
         cancellationToken,
-            (ops) => totalOps += ops,
+        (ops) => totalOps += ops,
       );
 
       // Step 4: Histogram equalization
       sendProgress?.call(
         TaskProgress(
           percentage: (iter + 0.7) / iterations,
-          message: 'Iteration ${iter + 1}/$iterations: Histogram equalization...',
+          message:
+              'Iteration ${iter + 1}/$iterations: Histogram equalization...',
         ),
       );
       currentImage = await _histogramEqualization(
@@ -103,7 +104,7 @@ class HeavyImageProcessingTask extends IsolateTask<Uint8List, String> {
         width,
         height,
         cancellationToken,
-            (ops) => totalOps += ops,
+        (ops) => totalOps += ops,
       );
 
       // Step 5: Simple Gaussian blur (replaces NLM for stability)
@@ -118,14 +119,17 @@ class HeavyImageProcessingTask extends IsolateTask<Uint8List, String> {
         width,
         height,
         cancellationToken,
-            (ops) => totalOps += ops,
+        (ops) => totalOps += ops,
       );
     }
 
     stopwatch.stop();
 
-    final elapsedSeconds = (stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(2);
-    final opsPerSec = _formatNumber((totalOps / stopwatch.elapsedMilliseconds * 1000).round());
+    final elapsedSeconds = (stopwatch.elapsedMilliseconds / 1000)
+        .toStringAsFixed(2);
+    final opsPerSec = _formatNumber(
+      (totalOps / stopwatch.elapsedMilliseconds * 1000).round(),
+    );
 
     sendProgress?.call(
       TaskProgress(
@@ -148,12 +152,12 @@ Pipeline: HDR → Bilateral → Unsharp → Histogram → Gaussian
   /// HDR tone mapping with gamma correction
   /// Expensive: 6 exp/pow operations per pixel
   Future<Uint8List> _hdrToneMapping(
-      Uint8List data,
-      int width,
-      int height,
-      CancellationToken? token,
-      void Function(int) addOps,
-      ) async {
+    Uint8List data,
+    int width,
+    int height,
+    CancellationToken? token,
+    void Function(int) addOps,
+  ) async {
     final result = Uint8List(width * height * 3);
     final gamma = 2.2;
     final exposure = 1.2;
@@ -171,9 +175,15 @@ Pipeline: HDR → Bilateral → Unsharp → Histogram → Gaussian
       final gTone = 1 - math.exp(-g * exposure);
       final bTone = 1 - math.exp(-b * exposure);
 
-      result[pixelIndex] = (math.pow(rTone, 1 / gamma) * 255).clamp(0, 255).toInt();
-      result[pixelIndex + 1] = (math.pow(gTone, 1 / gamma) * 255).clamp(0, 255).toInt();
-      result[pixelIndex + 2] = (math.pow(bTone, 1 / gamma) * 255).clamp(0, 255).toInt();
+      result[pixelIndex] = (math.pow(rTone, 1 / gamma) * 255)
+          .clamp(0, 255)
+          .toInt();
+      result[pixelIndex + 1] = (math.pow(gTone, 1 / gamma) * 255)
+          .clamp(0, 255)
+          .toInt();
+      result[pixelIndex + 2] = (math.pow(bTone, 1 / gamma) * 255)
+          .clamp(0, 255)
+          .toInt();
     }
 
     addOps(width * height * 15); // 15 ops per pixel
@@ -183,12 +193,12 @@ Pipeline: HDR → Bilateral → Unsharp → Histogram → Gaussian
   /// Bilateral filter - edge-preserving smoothing
   /// VERY expensive: O(width × height × kernel²)
   Future<Uint8List> _bilateralFilter(
-      Uint8List data,
-      int width,
-      int height,
-      CancellationToken? token,
-      void Function(int) addOps,
-      ) async {
+    Uint8List data,
+    int width,
+    int height,
+    CancellationToken? token,
+    void Function(int) addOps,
+  ) async {
     final result = Uint8List.fromList(data); // Copy input as fallback
     final kernelSize = 5;
     final halfKernel = kernelSize ~/ 2;
@@ -222,14 +232,20 @@ Pipeline: HDR → Bilateral → Unsharp → Histogram → Gaussian
 
             // Spatial weight
             final spatialDist = math.sqrt(kx * kx + ky * ky);
-            final spatialWeight = math.exp(-(spatialDist * spatialDist) / (2 * sigmaSpatial * sigmaSpatial));
+            final spatialWeight = math.exp(
+              -(spatialDist * spatialDist) / (2 * sigmaSpatial * sigmaSpatial),
+            );
 
             // Range weight
             final rDiff = data[centerIdx] - data[idx];
             final gDiff = data[centerIdx + 1] - data[idx + 1];
             final bDiff = data[centerIdx + 2] - data[idx + 2];
-            final rangeDist = math.sqrt(rDiff * rDiff + gDiff * gDiff + bDiff * bDiff);
-            final rangeWeight = math.exp(-(rangeDist * rangeDist) / (2 * sigmaRange * sigmaRange));
+            final rangeDist = math.sqrt(
+              rDiff * rDiff + gDiff * gDiff + bDiff * bDiff,
+            );
+            final rangeWeight = math.exp(
+              -(rangeDist * rangeDist) / (2 * sigmaRange * sigmaRange),
+            );
 
             final weight = spatialWeight * rangeWeight;
             sumWeight += weight;
@@ -247,18 +263,20 @@ Pipeline: HDR → Bilateral → Unsharp → Histogram → Gaussian
       }
     }
 
-    addOps(width * height * kernelSize * kernelSize * 20); // ~500 ops per pixel!
+    addOps(
+      width * height * kernelSize * kernelSize * 20,
+    ); // ~500 ops per pixel!
     return result;
   }
 
   /// Unsharp masking for edge enhancement
   Future<Uint8List> _unsharpMask(
-      Uint8List data,
-      int width,
-      int height,
-      CancellationToken? token,
-      void Function(int) addOps,
-      ) async {
+    Uint8List data,
+    int width,
+    int height,
+    CancellationToken? token,
+    void Function(int) addOps,
+  ) async {
     // First, create blurred version (5x5 Gaussian)
     final blurred = await _gaussianBlur5x5(data, width, height, token);
 
@@ -279,18 +297,38 @@ Pipeline: HDR → Bilateral → Unsharp → Histogram → Gaussian
 
   /// 5x5 Gaussian blur helper (with bounds checking)
   Future<Uint8List> _gaussianBlur5x5(
-      Uint8List data,
-      int width,
-      int height,
-      CancellationToken? token,
-      ) async {
+    Uint8List data,
+    int width,
+    int height,
+    CancellationToken? token,
+  ) async {
     final result = Uint8List.fromList(data); // Copy input
     final kernel = [
-      1, 4, 6, 4, 1,
-      4, 16, 24, 16, 4,
-      6, 24, 36, 24, 6,
-      4, 16, 24, 16, 4,
-      1, 4, 6, 4, 1,
+      1,
+      4,
+      6,
+      4,
+      1,
+      4,
+      16,
+      24,
+      16,
+      4,
+      6,
+      24,
+      36,
+      24,
+      6,
+      4,
+      16,
+      24,
+      16,
+      4,
+      1,
+      4,
+      6,
+      4,
+      1,
     ];
     final kernelSum = 256;
 
@@ -333,12 +371,12 @@ Pipeline: HDR → Bilateral → Unsharp → Histogram → Gaussian
 
   /// Full 5x5 Gaussian blur as standalone step
   Future<Uint8List> _gaussianBlur5x5Full(
-      Uint8List data,
-      int width,
-      int height,
-      CancellationToken? token,
-      void Function(int) addOps,
-      ) async {
+    Uint8List data,
+    int width,
+    int height,
+    CancellationToken? token,
+    void Function(int) addOps,
+  ) async {
     final result = await _gaussianBlur5x5(data, width, height, token);
     addOps(width * height * 25); // 25 ops per pixel
     return result;
@@ -346,12 +384,12 @@ Pipeline: HDR → Bilateral → Unsharp → Histogram → Gaussian
 
   /// Histogram equalization for contrast enhancement
   Future<Uint8List> _histogramEqualization(
-      Uint8List data,
-      int width,
-      int height,
-      CancellationToken? token,
-      void Function(int) addOps,
-      ) async {
+    Uint8List data,
+    int width,
+    int height,
+    CancellationToken? token,
+    void Function(int) addOps,
+  ) async {
     final result = Uint8List(width * height * 3);
 
     // Process each channel separately

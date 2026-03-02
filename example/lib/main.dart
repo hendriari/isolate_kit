@@ -100,7 +100,9 @@ class _MyHomePageState extends State<MyHomePage> {
         _progress = 1.0;
       });
     } on TaskCancelledException {
-      debugPrint('🎯 CAUGHT TaskCancelledException for $taskName'); // tambah ini
+      debugPrint(
+        '🎯 CAUGHT TaskCancelledException for $taskName',
+      ); // tambah ini
       // ✅ setiap task punya catch-nya sendiri sekarang
       if (mounted) {
         setState(() {

@@ -4,6 +4,8 @@ A powerful and production-ready Flutter package for managing background tasks us
 
 [![pub version](https://img.shields.io/pub/v/isolate_kit.svg)](https://pub.dev/packages/isolate_kit)
 
+![Isolate Kit Banner](https://raw.githubusercontent.com/hendriari/isolate_kit/main/image/isolate_kit_banner.png)
+
 ## ✨ Key Features
 
 - **🔄 Efficient Backgrounding**: Move heavy logic (JSON parsing, image processing, crypto) off the UI thread effortlessly.
@@ -302,9 +304,10 @@ await isolateKit.reset();
 6. **Use realistic timeouts**: Too-short timeouts cause unnecessary isolate kills and re-spawns.
 7. **Track progress on long tasks**: Use `sendProgress` so users know the app is working.
 
+## 🎁 Support Me
+[![Ko-Fi](https://badgen.net/badge/icon/ko-fi?icon=kofi&color=red&label)](https://ko-fi.com/hendriari) 
+[![Saweria Badge](https://img.shields.io/badge/Saweria-Donate-orange?style=flat&logo=buymeacoffee&logoColor=white)](https://saweria.co/hendriarii)
+
 ## 🤝 Contributing
 
-Found a bug or have a feature request? Open an issue or submit a PR!
-
----
-Built with ❤️ for the Flutter community.
+Found a bug or have a feature request? Open an issue or submit a PR 👉 [GitHub Repo](https://github.com/hendriari/isolate_kit)
